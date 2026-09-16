@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Join | StartUp Link UniMelb</title>
+  <meta name="description" content="Join StartUp Link UniMelb and get access to events, curated startup opportunities, and hiring partners." />
+  <link rel="icon" type="image/png" href="assets/img/logo.png" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" data-nav>
+    <div class="container nav-inner">
+      <a class="nav-logo" href="index.html" aria-label="StartUp Link UniMelb, home">
+        <img src="assets/img/logo.png" alt="StartUp Link UniMelb" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+        <span class="brand-fallback" style="display:none;"><span class="mark" aria-hidden="true">SL</span>StartUp Link UniMelb</span>
+      </a>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li><a href="partners.html">Partners</a></li>
+          <li><a href="committee.html">Committee</a></li>
+          <li><a class="nav-cta" href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener">Join now</a></li>
+        </ul>
+      </nav>
+      <button class="nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle menu">☰</button>
+    </div>
+    <div class="container nav-mobile-panel">
+      <a href="index.html">Home</a>
+      <a href="events.html">Events</a>
+      <a href="partners.html">Partners</a>
+      <a href="committee.html">Committee</a>
+      <a href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener"><strong>Join now →</strong></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="section" style="padding-bottom: 1rem;">
+      <div class="container" style="max-width: 620px;">
+        <div class="section-head">
+          <h2>Join StartUp Link UniMelb</h2>
+          <p>Takes under a minute. You'll get events, curated opportunities, and everything else on our list.</p>
+        </div>
+
+        <div class="form-note">
+          <strong>Prototype note:</strong> this form isn't wired to a real database yet. Submitting it
+          opens a pre-filled email to the club instead. Before launch, swap this for wherever membership
+          data should actually live (UMSU's system, a club spreadsheet, or the platform's native form/CMS store,
+          see the PRD's open question on this).
+        </div>
+
+        <form class="card" id="join-form" data-spotlight>
+          <div class="form-field">
+            <label for="name">Full name</label>
+            <input type="text" id="name" name="name" required autocomplete="name" />
+          </div>
+          <div class="form-field">
+            <label for="email">Student email</label>
+            <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@student.unimelb.edu.au" />
+          </div>
+          <div class="grid grid-2">
+            <div class="form-field">
+              <label for="degree">Degree</label>
+              <input type="text" id="degree" name="degree" placeholder="e.g. BCom / BSc" />
+            </div>
+            <div class="form-field">
+              <label for="year">Year level</label>
+              <select id="year" name="year">
+                <option value="1st year">1st year</option>
+                <option value="2nd year">2nd year</option>
+                <option value="3rd year">3rd year</option>
+                <option value="4th year+">4th year+</option>
+                <option value="Postgrad">Postgrad</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="interests">What are you most interested in?</label>
+            <select id="interests" name="interests">
+              <option value="Finding a startup job">Finding a startup job</option>
+              <option value="Meeting founders / networking">Meeting founders / networking</option>
+              <option value="Building my own startup">Building my own startup</option>
+              <option value="Skills workshops">Skills workshops</option>
+              <option value="Not sure yet">Not sure yet</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-block" data-magnetic type="submit">Join the club</button>
+          <p class="form-hint" id="join-confirmation" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p class="footer-ack">StartUp Link UniMelb acknowledges the Traditional Owners of the unceded lands on which we gather, learn, grow and innovate, the Wurundjeri Woi-wurrung people of the Kulin Nation.</p>
+      <div class="footer-bottom" style="border-top:none; padding-top:0;">
+        <span>© 2026 StartUp Link UniMelb</span>
+        <a href="index.html">Back to home</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      var form = document.getElementById("join-form");
+      var confirmation = document.getElementById("join-confirmation");
+      form.addEventListener("submit", function (evt) {
+        evt.preventDefault();
+        var data = new FormData(form);
+        var lines = [
+          "Name: " + data.get("name"),
+          "Student email: " + data.get("email"),
+          "Degree: " + data.get("degree"),
+          "Year: " + data.get("year"),
+          "Interested in: " + data.get("interests"),
+        ];
+        var mailto =
+          "mailto:info@startuplinkunimelb.net?subject=" +
+          encodeURIComponent("New membership signup: " + data.get("name")) +
+          "&body=" +
+          encodeURIComponent(lines.join("\n"));
+        window.location.href = mailto;
+        confirmation.textContent =
+          "Almost done. Hit send in the email that just opened and you're in. (Didn't open? Email info@startuplinkunimelb.net directly.)";
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+SAVE YOUR LOGO HERE
+===================
+
+Save the logo file you sent as EXACTLY:
+
+    assets/img/logo.png
+
+That's it. The site already references this path in the nav bar, the footer,
+and the browser-tab favicon. As soon as the file exists at that path it shows
+up automatically. Until then, the site falls back to a text wordmark so nothing
+looks broken.
+
+Notes:
+- Your logo is white, which is why it sits perfectly on the dark navy/black nav.
+- If you'd rather use an SVG, save it as assets/img/logo.svg and change the two
+  "assets/img/logo.png" references in each .html file's nav/footer, plus the
+  favicon <link>, to .svg.
+- The favicon (browser-tab icon) uses the same white logo. On a light browser
+  tab bar a pure-white icon can look faint. If that bothers you, also export a
+  small dark or blue version and point the <link rel="icon"> at it.

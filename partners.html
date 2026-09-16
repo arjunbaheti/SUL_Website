@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Past Partners | StartUp Link UniMelb</title>
+  <meta name="description" content="Companies that have worked with StartUp Link UniMelb." />
+  <link rel="icon" type="image/png" href="assets/img/logo.png" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" data-nav>
+    <div class="container nav-inner">
+      <a class="nav-logo" href="index.html" aria-label="StartUp Link UniMelb, home">
+        <img src="assets/img/logo.png" alt="StartUp Link UniMelb" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+        <span class="brand-fallback" style="display:none;"><span class="mark" aria-hidden="true">SL</span>StartUp Link UniMelb</span>
+      </a>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li><a href="partners.html" aria-current="page">Partners</a></li>
+          <li><a href="committee.html">Committee</a></li>
+          <li><a class="nav-cta" href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener">Join now</a></li>
+        </ul>
+      </nav>
+      <button class="nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle menu">☰</button>
+    </div>
+    <div class="container nav-mobile-panel">
+      <a href="index.html">Home</a>
+      <a href="events.html">Events</a>
+      <a href="partners.html">Partners</a>
+      <a href="committee.html">Committee</a>
+      <a href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener"><strong>Join now →</strong></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="section" style="padding-bottom: 1rem;">
+      <div class="container">
+        <div class="section-head">
+          <h2>Past partners</h2>
+          <p>Companies that have worked with StartUp Link UniMelb. Interested in partnering with us? <a href="mailto:info@startuplinkunimelb.net" style="color: var(--sul-accent); font-weight:600;">Get in touch</a>.</p>
+        </div>
+
+        <div class="partner-tier-label">Headline partners</div>
+        <div class="partner-grid-headline" id="headline-partners"></div>
+
+        <div class="partner-tier-label">Supporting partners</div>
+        <div class="partner-grid-supporting" id="supporting-partners"></div>
+      </div>
+    </section>
+
+    <div class="ribbon" aria-hidden="true">
+      <div class="ribbon-track" data-speed="0.45" data-direction="left">
+        <span class="solid">Partner with us</span><span class="star">✦</span>
+        <span>Hire our members</span><span class="star">✦</span>
+        <span class="solid">Run a workshop</span><span class="star">✦</span>
+        <span>info@startuplinkunimelb.net</span><span class="star">✦</span>
+        <span class="solid">Partner with us</span><span class="star">✦</span>
+        <span>Hire our members</span><span class="star">✦</span>
+        <span class="solid">Run a workshop</span><span class="star">✦</span>
+        <span>info@startuplinkunimelb.net</span><span class="star">✦</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p class="footer-ack">StartUp Link UniMelb acknowledges the Traditional Owners of the unceded lands on which we gather, learn, grow and innovate, the Wurundjeri Woi-wurrung people of the Kulin Nation.</p>
+      <div class="footer-bottom" style="border-top:none; padding-top:0;">
+        <span>© 2026 StartUp Link UniMelb</span>
+        <a href="index.html">Back to home</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="content/partners.js"></script>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      var partners = window.SUL_CONTENT.partners || [];
+      var headline = partners.filter(function (p) { return p.tier === "headline"; });
+      var supporting = partners.filter(function (p) { return p.tier === "supporting"; });
+
+      var headlineEl = document.getElementById("headline-partners");
+      if (!headline.length) {
+        headlineEl.appendChild(SUL.el("div", { class: "empty-state", text: "No headline partners yet." }));
+      } else {
+        headline.forEach(function (p) {
+          var node = SUL.partnerNode(p, { headline: true });
+          node.classList.add("reveal");
+          headlineEl.appendChild(node);
+        });
+      }
+
+      var supportingEl = document.getElementById("supporting-partners");
+      if (!supporting.length) {
+        supportingEl.appendChild(SUL.el("div", { class: "empty-state", text: "No supporting partners yet." }));
+      } else {
+        supporting.forEach(function (p) {
+          var node = SUL.partnerNode(p, { headline: false });
+          node.classList.add("reveal");
+          supportingEl.appendChild(node);
+        });
+      }
+
+      // Reveal the just-added partner cards.
+      if ("IntersectionObserver" in window &&
+          !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+        var obs = new IntersectionObserver(function (entries) {
+          entries.forEach(function (en) {
+            if (en.isIntersecting) { en.target.classList.add("is-visible"); obs.unobserve(en.target); }
+          });
+        }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+        document.querySelectorAll(".reveal:not(.is-visible)").forEach(function (n) { obs.observe(n); });
+      } else {
+        document.querySelectorAll(".reveal").forEach(function (n) { n.classList.add("is-visible"); });
+      }
+    })();
+  </script>
+</body>
+</html>
