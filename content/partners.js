@@ -1,45 +1,47 @@
-// Hiring partners, rendered by tier on the Partners page and as a scrolling
-// logo strip on the homepage. tier must be "headline" or "supporting".
-//
-// LOGOS: drop image files (SVG or PNG with transparent background works best)
-// into assets/img/partners/ and set `logo` to the path, e.g.
-//   logo: "assets/img/partners/acme.svg"
-// Leave `logo` blank to fall back to an initials badge until a real logo is in.
+// Past partners, rendered as a logo strip on the homepage. Drop trimmed,
+// transparent-background logo files into assets/img/ and point `logo` at them.
+// Set `mono: true` for solid black wordmarks (no brand colour to reveal on the
+// dark background) so they stay white on hover instead of vanishing.
 window.SUL_CONTENT = window.SUL_CONTENT || {};
 window.SUL_CONTENT.partners = [
   {
-    id: "ptn-001",
-    name: "Placeholder Startup Co.",
-    tier: "headline",
-    logo: "", // e.g. "assets/img/partners/placeholder.svg"
-    url: "https://example.com",
+    id: "ptn-antler",
+    name: "Antler",
+    logo: "assets/img/antler.svg",
+    url: "https://www.antler.co",
   },
   {
-    id: "ptn-002",
-    name: "Example Labs",
-    tier: "headline",
-    logo: "",
-    url: "https://example.com",
+    id: "ptn-blackbird",
+    name: "Blackbird",
+    logo: "assets/img/blackbird.png",
+    mono: true,
+    url: "https://www.blackbird.vc",
   },
   {
-    id: "ptn-003",
-    name: "Sample Ventures",
-    tier: "supporting",
-    logo: "",
-    url: "https://example.com",
+    id: "ptn-startmate",
+    name: "Startmate",
+    logo: "assets/img/startmate.png",
+    mono: true,
+    url: "https://www.startmate.com",
   },
   {
-    id: "ptn-004",
-    name: "Demo Technologies",
-    tier: "supporting",
-    logo: "",
-    url: "https://example.com",
+    id: "ptn-investorhub",
+    name: "InvestorHub",
+    logo: "assets/img/investorhub.png",
+    mono: true,
+    url: "https://investorhub.com",
   },
   {
-    id: "ptn-005",
-    name: "Test & Co",
-    tier: "supporting",
-    logo: "",
-    url: "https://example.com",
+    id: "ptn-archa",
+    name: "Archa",
+    logo: "assets/img/archa.png",
+    url: "https://www.archa.com.au",
+  },
+  {
+    id: "ptn-zeller",
+    name: "Zeller",
+    logo: "assets/img/zeller.png",
+    mono: true,
+    url: "https://www.myzeller.com",
   },
 ];

@@ -346,32 +346,66 @@
         var r = card.getBoundingClientRect();
         var px = (e.clientX - r.left) / r.width;
         var py = (e.clientY - r.top) / r.height;
-        var rotY = (px - 0.5) * 10;
-        var rotX = (0.5 - py) * 10;
+        var rotY = (px - 0.5) * 7;
+        var rotX = (0.5 - py) * 7;
+        // Fast, snappy transition while tracking the pointer.
+        card.style.transition = "transform 0.12s ease-out";
         card.style.transform =
-          "perspective(700px) rotateX(" + rotX + "deg) rotateY(" + rotY + "deg) translateY(-4px)";
+          "perspective(900px) rotateX(" + rotX + "deg) rotateY(" + rotY + "deg) translateY(-4px)";
         card.style.setProperty("--mx", px * 100 + "%");
         card.style.setProperty("--my", py * 100 + "%");
       });
       card.addEventListener("mouseleave", function () {
+        // Ease back and restore the default (reveal) transition.
+        card.style.transition = "transform 0.5s cubic-bezier(0.16,1,0.3,1)";
         card.style.transform = "";
       });
     });
   }
 
-  // ---- Magnetic pull on [data-magnetic] elements ----
+  // ---- Magnetic pull with spring easing on primary CTAs ----
+  // Applied to anything tagged [data-magnetic] plus every primary/nav button,
+  // so the effect the buttons "lean" toward the cursor is site-wide. The follow
+  // is eased with a rAF spring instead of snapping, and it glides back on exit.
   function initMagnetic() {
     if (prefersReduced) return;
-    var els = Array.prototype.slice.call(document.querySelectorAll("[data-magnetic]"));
+    var fine = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!fine) return;
+    var seen = [];
+    var els = Array.prototype.slice.call(
+      document.querySelectorAll("[data-magnetic], .btn-primary, .nav-cta")
+    ).filter(function (m) {
+      if (seen.indexOf(m) !== -1) return false;
+      seen.push(m);
+      return true;
+    });
     els.forEach(function (m) {
+      var strength = parseFloat(m.getAttribute("data-magnetic")) || 0.3;
+      var tx = 0, ty = 0, cx = 0, cy = 0, raf = null, active = false;
+      // Drop transform from the CSS transition so the spring drives it cleanly.
+      m.style.transition = "background-color 0.22s ease, border-color 0.22s ease, color 0.22s ease";
+      m.style.willChange = "transform";
+      function loop() {
+        cx += (tx - cx) * 0.18;
+        cy += (ty - cy) * 0.18;
+        m.style.transform = "translate(" + cx.toFixed(2) + "px," + cy.toFixed(2) + "px)";
+        if (active || Math.abs(tx - cx) > 0.1 || Math.abs(ty - cy) > 0.1) {
+          raf = requestAnimationFrame(loop);
+        } else {
+          m.style.transform = "";
+          raf = null;
+        }
+      }
       m.addEventListener("mousemove", function (e) {
         var r = m.getBoundingClientRect();
-        var x = e.clientX - (r.left + r.width / 2);
-        var y = e.clientY - (r.top + r.height / 2);
-        m.style.transform = "translate(" + x * 0.28 + "px," + y * 0.28 + "px)";
+        tx = (e.clientX - (r.left + r.width / 2)) * strength;
+        ty = (e.clientY - (r.top + r.height / 2)) * strength;
+        active = true;
+        if (!raf) raf = requestAnimationFrame(loop);
       });
       m.addEventListener("mouseleave", function () {
-        m.style.transform = "";
+        tx = 0; ty = 0; active = false;
+        if (!raf) raf = requestAnimationFrame(loop);
       });
     });
   }
@@ -507,6 +541,7 @@
     initScrollProgress();
     initCountUp();
     initMagnetic();
+    initTilt();
     initParallax();
     initKineticRibbons();
     initSpotlight();
