@@ -1,16 +1,15 @@
-# StartUp Link UniMelb — website prototype
+# StartUp Link UniMelb — website
 
-Status: **coded prototype**, not the recommended final build. See "Why this isn't the final platform" below before treating this as done.
+A dependency-free static site (plain HTML/CSS/JS, no build step, no Node/npm required) for the University of Melbourne chapter of StartUp Link Australia. Recruitment-first: the job is connecting students to the startup ecosystem.
 
-## What this is
+## Pages
 
-A dependency-free static site (plain HTML/CSS/JS, no build step, no Node/npm required) implementing the P0 flows from the PRD so the club can click through the real UX before committing to a platform:
-
-- `index.html` — homepage (P0.1)
-- `events.html` — Instagram section (`@startuplinkunimelb`); events/deadlines are posted there
-- `join.html` — membership signup (P0.3), no longer linked in nav ("Join now" goes to UMSU)
-- `partners.html` — tiered past partners (P0.4)
-- `committee.html` — exec roster by two-year term (P1.2)
+- `index.html` — homepage: hero, moving blue background, and a "Past Partners" logo strip
+- `about.html` — what the club does (bridge to opportunities, entrepreneurial skills, the Melbourne network) plus headline stats
+- `events.html` — full-page Instagram embed (`@startuplinkunimelb`); events and deadlines are posted there
+- `partners.html` — "Partner with us": a prospective-partner pitch (hire entrepreneurial talent, meet members, build a pipeline) with a "Get in touch" CTA
+- `committee.html` — the committee: group-photo banner, roster by two-year term, and a Committee Portal button
+- `join.html` — legacy membership signup form; no longer linked in nav ("Join now" goes to UMSU)
 
 ## Running it
 
@@ -19,43 +18,36 @@ No install needed. Either:
 - Open `index.html` directly in a browser, or
 - From this folder, run `python3 -m http.server 8000` and visit `http://localhost:8000`
 
-## Editing content (until a real CMS is chosen)
+## Editing content
 
-Partners and committee data live in `content/*.js` as plain JS arrays (not `.json`, so the browser can load them via a `<script>` tag with no server-side fetch/CORS issues when opened as a local file). Each file has a comment explaining its fields. To edit:
+- **Past partner logos** live in `content/partners.js` (name, `logo` path, `url`, and optional `mono: true` for solid-black wordmarks so they stay white on the dark background). Logo files sit in `assets/img/` and should be trimmed, transparent-background PNGs/SVGs.
+- **Committee** data lives in `content/committee.js` as plain JS arrays. Copy an existing entry, change the values, give it a unique `id`, save, refresh.
 
-1. Open the relevant file in `content/`
-2. Copy an existing entry, change the values, give it a unique `id`
-3. Save and refresh the page
+These files load via `<script>` tags (not `.json`) so the site works even when opened as a local file. Editing is copy-paste-and-fill-in-blanks but still requires respecting JS syntax (commas, quotes).
 
-This is editable by a non-technical person in the sense that it's copy-paste-and-fill-in-blanks, but it still requires opening a code editor and respecting JS syntax (commas, quotes). It does **not** satisfy P0.5 ("no code, no deploy step they must understand") on its own — see below.
+## Motion / interaction
 
-## Why this isn't the final platform
+All motion is disabled automatically for visitors with "reduce motion" set, and pointer-driven effects only run on fine-pointer (non-touch) devices:
 
-The PRD's own recommendation is to build on a no-code platform (Framer, Webflow, or a structured Notion/Super site), not custom code — because the exec turns over every year and P0.5 requires zero-developer-involvement editing. This prototype exists to:
+- Spring-magnetic primary buttons, hover sheen sweep, and a shimmering hero accent word
+- 3D tilt + pointer glare on the committee cards
+- Blur-in scroll reveals, count-up stats, custom cursor, scroll-progress bar
+- Mask-reveal hero headline, scroll-velocity kinetic ribbons, cursor spotlights, moving background orbs
+- Stepped logo carousel on the "Past Partners" strip (rotates when there are more logos than fit)
 
-1. Let the club validate the actual flows (signup, partner tiers, Instagram feed) before picking a platform.
-2. Serve as a content/IA reference for whoever builds the real version in Framer/Webflow/etc.
-3. Be a working fallback if the no-code route stalls and a static site + a git-based CMS (e.g. Decap CMS) ends up being the pragmatic choice for a zero-budget club.
+## Brand
 
-Before this goes live as the actual site, the PRD's blocking open questions still need answers:
+Colour tokens are in `assets/css/style.css` (`:root` variables): ice-blue accent `#C5E4EC`, near-black background stepping to royal blue. Contact email is `info@startuplinkunimelb.net`. All "Join now" buttons point to the club's UMSU join page (https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/), so UMSU is the membership datastore.
 
-- Standalone vs. chapter page under StartUp Link Australia
-- Where membership data should really live (this prototype just opens a pre-filled email — see `join.html`)
-- Domain control for `startuplinkunimelb.net`
-- Platform budget and account ownership across handovers
-- Whether any partner agreement requires click-tracking reporting (P1.4 → P0 if so)
+## To confirm before/after launch
 
-## Known gaps vs. the PRD
-
-- **P0.3 (signup)**: submits via a `mailto:` link, not a real datastore. Functional today, but not what should ship.
-- **P1.3 (automated reminders)**, **P1.4 (partner click tracking)**: not implemented — need a backend/analytics, out of scope for a static site.
-- **Partner/committee photos**: no real images yet — cards fall back to initials badges. When real logos/photos are supplied, add `<img>` tags with real `alt` text (accessibility floor in the PRD).
-- **Brand**: colours in `assets/css/style.css` (`:root` variables) are placeholders (white / dark-blue / black theme). Swap the accent tokens once the club's logo/colour assets are supplied.
-- **Homepage stats are placeholders**: the count-up numbers (300+ members, 25+ partners, 40+ events, 8 branches) in `index.html` are made up — replace with real figures before launch or they're misleading.
-- **"Join now" goes to UMSU**: all Join buttons point to the club's UMSU join page (https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/), so UMSU is the membership datastore. The old on-site signup form still exists at `join.html` but is no longer linked in the nav — keep it or delete it.
-- **Dynamic features**: custom white-dot cursor, scroll-progress bar, mask-reveal hero headline, scroll-velocity kinetic type ribbons, an interactive index list, cursor spotlights, magnetic buttons, count-up stats, live Melbourne clock, film-grain/grid texture, and the scrolling partner marquee. All are disabled automatically for visitors with "reduce motion" set, and the cursor only activates on fine-pointer (non-touch) devices.
+- **E-LEAD partner URL** is a placeholder (`#`) in `content/partners.js` — add the real link. (Archa → archa.com.au and Zeller → myzeller.com were best-guess URLs; double-check.)
+- **Stats** on `about.html` and `partners.html` (700+ members in 2025, 45+ committee, 10+ events a year, 4 branches) — confirm the figures.
+- **Committee Portal** button on `committee.html` links to `#` — point it at the real portal.
+- **Instagram link** in the homepage footer is `#` — add the real profile URL.
+- **`join.html`** still exists but is unlinked; keep or delete it depending on whether UMSU fully covers signup.
 
 ## Verified
 
-- All 5 pages served correctly via local HTTP server (200 OK), including all CSS/JS assets.
-- Not yet checked in an actual browser (no browser automation tool available in this environment) — recommend opening `index.html` locally and clicking through before sharing further, especially the RSVP/add-to-calendar/signup interactions and the mobile layout at 375px width.
+- All pages served correctly via local HTTP server (200 OK), including CSS/JS and image assets.
+- Not yet checked in an actual browser here (no browser automation in this environment) — recommend opening `index.html` locally and clicking through, especially the mobile layout at 375px width and the hover/motion effects.
