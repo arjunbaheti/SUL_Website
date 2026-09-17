@@ -41,11 +41,12 @@ Colour tokens are in `assets/css/style.css` (`:root` variables): ice-blue accent
 
 ## To confirm before/after launch
 
-- **E-LEAD partner URL** is a placeholder (`#`) in `content/partners.js` — add the real link. (Archa → archa.com.au and Zeller → myzeller.com were best-guess URLs; double-check.)
+- **Past partner list** in `content/partners.js` (Antler, Blackbird, Startmate, InvestorHub, Archa, Zeller) — confirm every company listed was genuinely a partner, and double-check each `url` resolves.
 - **Stats** on `about.html` and `partners.html` (700+ members in 2025, 45+ committee, 10+ events a year, 4 branches) — confirm the figures.
-- **Committee Portal** button on `committee.html` links to `#` — point it at the real portal.
-- **Instagram link** in the homepage footer is `#` — add the real profile URL.
-- **`join.html`** still exists but is unlinked; keep or delete it depending on whether UMSU fully covers signup.
+- **Committee Portal** button on `committee.html` links to `#` — point it at the real portal or remove the button until it exists.
+- **Instagram profile embed** on `events.html` uses `instagram.com/<handle>/embed`, which Instagram blocks for full profiles (single posts only), so the styled fallback panel is what visitors will usually see. For a live grid, generate a free widget (behold.so / snapwidget) and paste its `<iframe>` in place.
+- **`join.html`** still exists but is unlinked from nav; keep or delete it depending on whether UMSU fully covers signup. (It still carries a visible "prototype" note.)
+- **Social links** in the homepage footer point at the real Instagram and LinkedIn company pages.
 
 ## Verified
 
