@@ -11,6 +11,8 @@
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
 
+  <div class="bg-flow" aria-hidden="true"><span></span><span></span><span></span></div>
+
   <header class="nav" data-nav>
     <div class="container nav-inner">
       <a class="nav-logo" href="index.html" aria-label="StartUp Link UniMelb, home">
@@ -20,8 +22,9 @@
       <nav aria-label="Primary">
         <ul class="nav-links">
           <li><a href="index.html">Home</a></li>
+          <li><a href="about.html">About</a></li>
           <li><a href="events.html">Events</a></li>
-          <li><a href="partners.html">Partners</a></li>
+          <li><a href="partners.html">Partner with us</a></li>
           <li><a href="committee.html" aria-current="page">Committee</a></li>
           <li><a class="nav-cta" href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener">Join now</a></li>
         </ul>
@@ -30,8 +33,9 @@
     </div>
     <div class="container nav-mobile-panel">
       <a href="index.html">Home</a>
+      <a href="about.html">About</a>
       <a href="events.html">Events</a>
-      <a href="partners.html">Partners</a>
+      <a href="partners.html">Partner with us</a>
       <a href="committee.html">Committee</a>
       <a href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener"><strong>Join now →</strong></a>
     </div>
@@ -40,11 +44,16 @@
   <main id="main">
     <section class="section">
       <div class="container">
-        <div class="section-head">
-          <h2>The committee</h2>
-          <p>The office-bearers who run StartUp Link UniMelb, listed by term. Each committee serves across two years. Questions for the team? <a href="mailto:info@startuplinkunimelb.net" style="color: var(--sul-accent); font-weight:600;">info@startuplinkunimelb.net</a>.</p>
-        </div>
+        <figure class="committee-hero reveal">
+          <img src="assets/img/committee-photo.jpg" alt="The StartUp Link UniMelb executive committee at the University of Melbourne" loading="lazy" />
+          <figcaption class="committee-hero-overlay">
+            <h2>The Committee</h2>
+          </figcaption>
+        </figure>
         <div class="roster" id="committee-list"></div>
+        <div class="cta-row" style="justify-content: center; margin-top: 2.75rem;">
+          <a class="btn btn-primary" href="#">Committee Portal</a>
+        </div>
       </div>
     </section>
   </main>
@@ -86,7 +95,7 @@
           office("Secretary", term.secretary),
           office("Treasurer", term.treasurer),
         ]);
-        var card = SUL.el("div", { class: "term-card reveal" + (term.current ? " is-current" : "") }, [head, offices]);
+        var card = SUL.el("div", { class: "term-card reveal tilt" + (term.current ? " is-current" : "") }, [head, offices]);
         list.appendChild(card);
       });
 
