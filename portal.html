@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Committee Portal | StartUp Link UniMelb</title>
+  <meta name="description" content="Members-only committee portal for StartUp Link UniMelb." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="assets/img/logo.png" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <div class="bg-flow" aria-hidden="true"><span></span><span></span><span></span></div>
+
+  <header class="nav" data-nav>
+    <div class="container nav-inner">
+      <a class="nav-logo" href="index.html" aria-label="StartUp Link UniMelb, home">
+        <img src="assets/img/logo.png" alt="StartUp Link UniMelb" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+        <span class="brand-fallback" style="display:none;"><span class="mark" aria-hidden="true">SL</span>StartUp Link UniMelb</span>
+      </a>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><a href="events.html">What's on</a></li>
+          <li><a href="partners.html">Partner with us</a></li>
+          <li><a href="committee.html">Committee</a></li>
+          <li><a class="nav-cta" href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener">Join now</a></li>
+        </ul>
+      </nav>
+      <button class="nav-toggle" data-nav-toggle aria-expanded="false" aria-label="Toggle menu">☰</button>
+    </div>
+    <div class="container nav-mobile-panel">
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="events.html">What's on</a>
+      <a href="partners.html">Partner with us</a>
+      <a href="committee.html">Committee</a>
+      <a href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener"><strong>Join now →</strong></a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Login view -->
+    <section class="section" id="login-view" style="padding-bottom: 1rem;">
+      <div class="container" style="max-width: 460px;">
+        <div class="section-head">
+          <h2>Committee Portal</h2>
+          <p>Members only. Sign in with your committee credentials.</p>
+        </div>
+
+        <form class="card" id="portal-login" data-spotlight autocomplete="off">
+          <div class="form-field">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" />
+          </div>
+          <div class="form-field">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password" />
+          </div>
+          <button class="btn btn-primary btn-block" data-magnetic type="submit">Sign in</button>
+          <p class="form-hint" id="login-error" role="alert" aria-live="assertive" style="color: #ff8a8a;"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Portal view (revealed after sign-in) -->
+    <section class="section" id="portal-view" hidden>
+      <div class="container">
+        <div class="section-head reveal" style="display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+          <div>
+            <h2>Committee Portal</h2>
+            <p style="margin-bottom:0;">Welcome back. This is where committee tools will live.</p>
+          </div>
+          <button class="btn btn-secondary" id="portal-logout" type="button">Sign out</button>
+        </div>
+
+        <div class="index">
+          <div class="index-row reveal">
+            <div class="index-top">
+              <span class="index-num">01</span>
+              <h3 class="index-title">Coming soon</h3>
+            </div>
+            <div class="index-body"><div>
+              <p>This portal is a placeholder. Committee resources, documents, event planning, and member tools will be added here.</p>
+            </div></div>
+          </div>
+          <div class="index-row reveal">
+            <div class="index-top">
+              <span class="index-num">02</span>
+              <h3 class="index-title">What's planned</h3>
+            </div>
+            <div class="index-body"><div>
+              <p>Handover docs, the sponsorship pipeline, event run sheets, and shared calendars, all in one place behind a proper login.</p>
+            </div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p class="footer-ack">StartUp Link UniMelb acknowledges the Traditional Owners of the unceded lands on which we gather, learn, grow and innovate, the Wurundjeri Woi-wurrung people of the Kulin Nation.</p>
+      <div class="footer-bottom" style="border-top:none; padding-top:0;">
+        <span>© 2026 StartUp Link UniMelb</span>
+        <a href="index.html">Back to home</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+  <script>
+    // NOTE: This is a front-end placeholder gate only. The credentials below are
+    // visible in the page source, so this provides NO real security. Replace with
+    // a proper backend / auth provider before the portal holds anything sensitive.
+    (function () {
+      var VALID_USER = "test";
+      var VALID_PASS = "test";
+      var KEY = "sul-portal-auth";
+
+      var loginView = document.getElementById("login-view");
+      var portalView = document.getElementById("portal-view");
+      var form = document.getElementById("portal-login");
+      var error = document.getElementById("login-error");
+
+      function showPortal() {
+        loginView.hidden = true;
+        portalView.hidden = false;
+        // Trigger reveal animations now that the section is visible.
+        portalView.querySelectorAll(".reveal").forEach(function (n) {
+          n.classList.add("is-visible");
+        });
+      }
+
+      function showLogin() {
+        portalView.hidden = true;
+        loginView.hidden = false;
+      }
+
+      // Stay signed in for the session (cleared when the tab/browser closes).
+      if (sessionStorage.getItem(KEY) === "1") {
+        showPortal();
+      }
+
+      form.addEventListener("submit", function (evt) {
+        evt.preventDefault();
+        var u = document.getElementById("username").value.trim();
+        var p = document.getElementById("password").value;
+        if (u === VALID_USER && p === VALID_PASS) {
+          error.textContent = "";
+          sessionStorage.setItem(KEY, "1");
+          form.reset();
+          showPortal();
+        } else {
+          error.textContent = "Incorrect username or password.";
+          document.getElementById("password").value = "";
+          document.getElementById("password").focus();
+        }
+      });
+
+      var logout = document.getElementById("portal-logout");
+      if (logout) {
+        logout.addEventListener("click", function () {
+          sessionStorage.removeItem(KEY);
+          showLogin();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
