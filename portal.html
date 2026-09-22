@@ -8,6 +8,7 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="icon" type="image/png" href="assets/img/logo.png" />
   <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="stylesheet" href="assets/css/portal.css" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -68,35 +69,8 @@
 
     <!-- Portal view (revealed after sign-in) -->
     <section class="section" id="portal-view" hidden>
-      <div class="container">
-        <div class="section-head reveal" style="display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-          <div>
-            <h2>Committee Portal</h2>
-            <p style="margin-bottom:0;">Welcome back. This is where committee tools will live.</p>
-          </div>
-          <button class="btn btn-secondary" id="portal-logout" type="button">Sign out</button>
-        </div>
-
-        <div class="index">
-          <div class="index-row reveal">
-            <div class="index-top">
-              <span class="index-num">01</span>
-              <h3 class="index-title">Coming soon</h3>
-            </div>
-            <div class="index-body"><div>
-              <p>This portal is a placeholder. Committee resources, documents, event planning, and member tools will be added here.</p>
-            </div></div>
-          </div>
-          <div class="index-row reveal">
-            <div class="index-top">
-              <span class="index-num">02</span>
-              <h3 class="index-title">What's planned</h3>
-            </div>
-            <div class="index-body"><div>
-              <p>Handover docs, the sponsorship pipeline, event run sheets, and shared calendars, all in one place behind a proper login.</p>
-            </div></div>
-          </div>
-        </div>
+      <div class="container container-wide">
+        <div class="crm-wrap"><div id="crm-root"></div></div>
       </div>
     </section>
   </main>
@@ -112,6 +86,7 @@
   </footer>
 
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/recruitment.js"></script>
   <script>
     // NOTE: This is a front-end placeholder gate only. The credentials below are
     // visible in the page source, so this provides NO real security. Replace with
@@ -161,13 +136,14 @@
         }
       });
 
-      var logout = document.getElementById("portal-logout");
-      if (logout) {
-        logout.addEventListener("click", function () {
+      // The Sign out button is rendered by the CRM, so wire it via delegation.
+      document.addEventListener("click", function (e) {
+        var t = e.target;
+        if (t && t.closest && t.closest("[data-portal-logout]")) {
           sessionStorage.removeItem(KEY);
           showLogin();
-        });
-      }
+        }
+      });
     })();
   </script>
 </body>

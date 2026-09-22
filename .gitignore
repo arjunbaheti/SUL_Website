@@ -3,3 +3,9 @@
 
 # Claude Code local session/memory (not part of the site)
 .claude/
+
+# Serverless function dependencies / local env / Vercel CLI state
+node_modules/
+.env
+.env.local
+.vercel/
