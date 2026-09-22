@@ -1,0 +1,8 @@
+{
+  "name": "sul-website",
+  "private": true,
+  "description": "StartUp Link UniMelb site. Static HTML/CSS/JS with one Vercel serverless function (api/send-email.js) for sending CRM emails.",
+  "dependencies": {
+    "nodemailer": "^6.9.14"
+  }
+}
