@@ -39,11 +39,16 @@ module.exports = async function handler(req, res) {
       service: "gmail",
       auth: { user: user, pass: pass },
     });
+    var domain = user.split("@")[1] || "startuplinkunimelb.net";
     await transporter.sendMail({
       from: '"StartUp Link UniMelb" <' + user + ">",
+      replyTo: user,
       to: to,
       subject: subject,
       text: text,
+      // Nodemailer defaults this to the container's internal hostname, which
+      // doesn't match the sending domain and reads as a spam signal.
+      messageId: "<" + Date.now() + "." + Math.random().toString(36).slice(2) + "@" + domain + ">",
     });
     res.status(200).json({ ok: true });
   } catch (err) {
