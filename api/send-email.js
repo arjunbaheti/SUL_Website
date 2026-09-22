@@ -24,7 +24,13 @@ module.exports = async function handler(req, res) {
   var user = process.env.GMAIL_USER;
   var pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) {
-    res.status(500).json({ ok: false, error: "Email isn't configured on the server yet (missing GMAIL_USER / GMAIL_APP_PASSWORD)." });
+    var missing = [];
+    if (!user) missing.push("GMAIL_USER");
+    if (!pass) missing.push("GMAIL_APP_PASSWORD");
+    res.status(500).json({ ok: false, error:
+      "Missing env var(s) on the server: " + missing.join(", ") + ". In Vercel: Project Settings -> " +
+      "Environment Variables -> make sure both are added with the Production box checked, then trigger " +
+      "a fresh deployment (Deployments -> ... -> Redeploy)." });
     return;
   }
 
