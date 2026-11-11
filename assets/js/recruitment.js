@@ -1,14 +1,15 @@
-/* StartUp Link UniMelb — Recruitment CRM
+/* StartUp Link UniMelb — Recruitment CRM (committee portal)
  *
  * A committee-only pipeline tracker: applicants move Applied -> Under review ->
  * Interview invited -> Interview booked -> Interviewed -> Offer / Rejected.
  *
- * DATA: stored in the browser via localStorage (key SUL_CRM.KEY) — a
- * single-browser tool for now, data does NOT sync between people or devices.
- * Use Export/Import to back up or hand a snapshot to someone else. The next
- * step for a shared, multi-user CRM (with real resume uploads and applicants
- * flowing in automatically from the application form) is a backend such as
- * Supabase; the record shape below is designed to migrate cleanly.
+ * DATA: shared Supabase database (see supabase/schema.sql). Applications arrive from the
+ * public form on recruitment.html; resumes/attachments live in the private "resumes"
+ * bucket and open via short-lived signed links. Access is enforced by Row Level Security
+ * (only signed-in users on the committee_members allowlist can read or write anything).
+ *
+ * portal.html signs the reviewer in, then calls SUL_CRM.start(db). SUL_CRM.stop() tears
+ * everything down on sign-out.
  */
 (function () {
   "use strict";
@@ -16,7 +17,12 @@
   var root = document.getElementById("crm-root");
   if (!root) return;
 
-  var KEY = "sul-recruitment-v1";
+  var db = null;            // Supabase client, set by start()
+  var channel = null;       // realtime subscription
+  var reloadTimer = null;
+  var running = false;
+  var loading = false;
+  var loadError = "";
 
   var STAGES = [
     { id: "applied",     label: "Applied",           color: "#6b7a99" },
@@ -59,32 +65,148 @@
   var DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
   // ---- State ---------------------------------------------------------------
-  var state = load();
+  var state = emptyState();
+  function emptyState() { return { applicants: [], settings: { bookingSlots: [] } }; }
 
-  function load() {
-    try {
-      var raw = localStorage.getItem(KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.applicants)) {
-          parsed.settings = parsed.settings || {};
-          parsed.settings.bookingSlots = Array.isArray(parsed.settings.bookingSlots) ? parsed.settings.bookingSlots : [];
-          return parsed;
-        }
+  // Applicant fields the committee can edit -> database column. The modal only sends the
+  // fields that actually changed, so two reviewers editing different fields don't clobber
+  // each other.
+  var EDITABLE = {
+    name: "name", email: "email", phone: "phone", role: "role", assignee: "assignee",
+    resume: "resume_url", booking: "booking", bookingSlotId: "booking_slot_id",
+    interviewAt: "interview_at", status: "status", rating: "rating",
+  };
+  var NULLABLE = { bookingSlotId: true, interviewAt: true };
+
+  function changesBetween(orig, draft) {
+    var out = {};
+    Object.keys(EDITABLE).forEach(function (k) {
+      if ((orig[k] || "") !== (draft[k] || "")) {
+        out[EDITABLE[k]] = NULLABLE[k] ? (draft[k] || null) : (draft[k] || "");
       }
-    } catch (e) { /* fall through to fresh state */ }
-    return { applicants: [], settings: { bookingSlots: [] } };
+    });
+    return out;
   }
 
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); }
-    catch (e) { alert("Could not save — browser storage may be full or blocked."); }
+  function noteFromRow(n) {
+    return { id: n.id, ts: n.created_at, text: n.text, type: n.type === "auto" ? "auto" : "manual", author: n.author_email || "" };
+  }
+
+  function fromRow(r) {
+    return {
+      id: r.id,
+      name: r.name || "",
+      email: r.email || "",
+      phone: r.phone || "",
+      degree: r.degree || "",
+      yearLevel: r.year_level || "",
+      role: r.role || "",
+      roleSecondary: r.role_secondary || "",
+      statement: r.statement || "",
+      linkedin: r.linkedin || "",
+      files: Array.isArray(r.files) ? r.files : [],
+      resume: r.resume_url || "",
+      assignee: ASSIGNEE_BY_ID[r.assignee] ? r.assignee : "",
+      booking: r.booking || "",
+      bookingSlotId: r.booking_slot_id || "",
+      interviewAt: r.interview_at || "",
+      status: STAGE_BY_ID[r.status] ? r.status : "applied",
+      rating: r.rating || "",
+      notes: (r.application_notes || []).map(noteFromRow).sort(function (x, y) { return y.ts.localeCompare(x.ts); }),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  function slotFromRow(r) {
+    return { id: r.id, label: r.label, day: r.day, start: r.start_time, end: r.end_time || "", url: r.url };
+  }
+
+  function loadAll() {
+    return Promise.all([
+      db.from("applications").select("*, application_notes(*)").order("created_at", { ascending: false }),
+      db.from("booking_slots").select("*").order("created_at", { ascending: true }),
+    ]).then(function (r) {
+      if (r[0].error) throw r[0].error;
+      if (r[1].error) throw r[1].error;
+      state.applicants = r[0].data.map(fromRow);
+      state.settings.bookingSlots = r[1].data.map(slotFromRow);
+      loadError = "";
+    }).catch(function (e) {
+      loadError = (e && e.message) || "Couldn't load applications.";
+    });
+  }
+
+  function start(client) {
+    db = client;
+    running = true;
+    loading = true;
+    render();
+    return loadAll().then(function () {
+      loading = false;
+      if (!running) return;
+      render();
+      subscribe();
+    });
+  }
+
+  function stop() {
+    running = false;
+    clearTimeout(reloadTimer);
+    if (channel && db) { db.removeChannel(channel); }
+    channel = null;
+    state = emptyState();
+    closeModal();
+    root.innerHTML = "";
+  }
+
+  // Live updates: a new application (or a teammate's edit) shows up without a refresh.
+  function subscribe() {
+    if (channel || !db) return;
+    channel = db.channel("crm-live");
+    ["applications", "application_notes", "booking_slots"].forEach(function (t) {
+      channel.on("postgres_changes", { event: "*", schema: "public", table: t }, scheduleReload);
+    });
+    channel.subscribe();
+  }
+
+  function scheduleReload() {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(function () {
+      loadAll().then(function () {
+        if (!running) return;
+        // Don't yank the toolbar away while someone is typing in the search box.
+        var ae = document.activeElement;
+        if (root.contains(ae) && ae.tagName === "INPUT" && document.getElementById("crm-board")) refreshBoard();
+        else render();
+      });
+    }, 500);
+  }
+
+  // ---- DB write helpers ------------------------------------------------------
+  // Resolves true on success. RLS-denied updates return zero rows with no error, so check both.
+  function dbUpdate(id, patch) {
+    return db.from("applications").update(patch).eq("id", id).select("id").then(function (res) {
+      if (res.error || !res.data || !res.data.length) {
+        alert("Couldn't save: " + (res.error ? res.error.message : "you may not have permission, or the applicant was deleted."));
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function addNote(a, text, type) {
+    return db.from("application_notes").insert({ application_id: a.id, type: type, text: text }).select().single()
+      .then(function (res) {
+        if (res.error) { toast("Couldn't save note: " + res.error.message); return null; }
+        var n = noteFromRow(res.data);
+        a.notes = a.notes || [];
+        a.notes.unshift(n);
+        return n;
+      });
   }
 
   // ---- Small helpers -------------------------------------------------------
-  function uid() {
-    return "a-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
-  }
   function nowISO() { return new Date().toISOString(); }
 
   function h(tag, attrs, children) {
@@ -121,6 +243,10 @@
     var d = new Date(iso);
     if (isNaN(d)) return "";
     return d.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  }
+  function fmtSize(bytes) {
+    if (!bytes) return "";
+    return bytes < 1048576 ? Math.max(1, Math.round(bytes / 1024)) + " KB" : (bytes / 1048576).toFixed(1) + " MB";
   }
   // datetime-local <-> ISO
   function toLocalInput(iso) {
@@ -159,6 +285,7 @@
     var hit = ASSIGNEES.filter(function (a) { return a.label.toLowerCase() === v || a.short.toLowerCase() === v; })[0];
     return hit ? hit.id : "";
   }
+  function hasResume(a) { return (a.files && a.files.length > 0) || !!a.resume; }
 
   // ---- Filtering -----------------------------------------------------------
   var filters = { q: "", role: "", rating: "", assignee: "" };
@@ -179,7 +306,7 @@
         else if (a.assignee !== filters.assignee) return false;
       }
       if (q) {
-        var hay = (a.name + " " + (a.email || "") + " " + (a.role || "")).toLowerCase();
+        var hay = (a.name + " " + (a.email || "") + " " + (a.role || "") + " " + (a.degree || "")).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
       }
       return true;
@@ -188,8 +315,23 @@
 
   // ---- Render: shell -------------------------------------------------------
   function render() {
+    if (!running) return;
     root.innerHTML = "";
     root.appendChild(buildHead());
+    if (loading) {
+      root.appendChild(h("div", { class: "crm-empty" }, [h("h3", { text: "Loading applications…" })]));
+      return;
+    }
+    if (loadError) {
+      root.appendChild(h("div", { class: "crm-empty" }, [
+        h("h3", { text: "Couldn't load applications" }),
+        h("p", { text: loadError + " If this is a new setup, check that supabase/schema.sql has been run and your email is in committee_members." }),
+        h("div", { class: "cta-row" }, [
+          h("button", { class: "btn btn-primary", type: "button", text: "Try again", onclick: reload }),
+        ]),
+      ]));
+      return;
+    }
     root.appendChild(buildStats());
     root.appendChild(buildToolbar());
     if (state.applicants.length === 0) {
@@ -197,6 +339,11 @@
     } else {
       root.appendChild(buildBoard());
     }
+  }
+
+  function reload() {
+    loading = true; render();
+    return loadAll().then(function () { loading = false; render(); if (!channel) subscribe(); });
   }
 
   function buildHead() {
@@ -234,7 +381,7 @@
 
   function buildToolbar() {
     var search = h("input", {
-      type: "search", placeholder: "Search name, email, role…", value: filters.q,
+      type: "search", placeholder: "Search name, email, role, degree…", value: filters.q,
       "aria-label": "Search applicants",
       oninput: function (e) { filters.q = e.target.value; refreshBoard(); },
     });
@@ -284,15 +431,13 @@
     var menu = h("details", { class: "crm-menu" }, [
       h("summary", { "aria-label": "More actions", text: "⋯" }),
       h("div", { class: "crm-menu-list" }, [
+        item("Refresh", reload),
+        h("div", { class: "sep" }),
         item("Export as JSON (backup)", exportJSON),
-        item("Import JSON", importJSONPrompt),
         item("Export as CSV", exportCSV),
         item("Import from CSV", importCSVPrompt),
         h("div", { class: "sep" }),
         item("Manage booking links", openBookingSlotsModal),
-        item("Load sample data", loadSample),
-        h("div", { class: "sep" }),
-        item("Clear all data", clearAll, "danger"),
       ]),
     ]);
     return menu;
@@ -302,10 +447,10 @@
   function buildEmpty() {
     return h("div", { class: "crm-empty" }, [
       h("h3", { text: "No applicants yet" }),
-      h("p", { text: "Applications will land here automatically once the form is connected to this portal. In the meantime, import an existing spreadsheet as CSV, or load sample data to see how the board works." }),
+      h("p", { text: "Applications land here automatically as soon as someone submits the form on the Recruitment page. You can also import an existing spreadsheet as CSV." }),
       h("div", { class: "cta-row" }, [
+        h("a", { class: "btn btn-secondary", href: "recruitment.html", target: "_blank", rel: "noopener", text: "Open the application form" }),
         h("button", { class: "btn btn-primary", type: "button", text: "Import from CSV", onclick: importCSVPrompt }),
-        h("button", { class: "btn btn-secondary", type: "button", text: "Load sample data", onclick: loadSample }),
       ]),
     ]);
   }
@@ -360,7 +505,7 @@
 
   function buildCard(a) {
     var meta = [];
-    if (a.resume) meta.push(h("span", { class: "crm-icon", title: "Resume attached", text: "📄" }));
+    if (hasResume(a)) meta.push(h("span", { class: "crm-icon", title: "Resume attached", text: "📄" }));
     if (a.interviewAt) meta.push(h("span", { class: "crm-icon", title: "Interview: " + fmtDateTime(a.interviewAt), text: "🗓" }));
     meta.push(h("span", { class: "spacer" }));
     if (a.rating) meta.push(ratingPill(a.rating));
@@ -406,12 +551,15 @@
   function moveTo(id, status) {
     var a = byId(id);
     if (!a || a.status === status) return;
+    var prev = a.status;
+    // Optimistic: show the move immediately, roll back if the database refuses it.
     a.status = status;
     a.updatedAt = nowISO();
-    a.notes = a.notes || [];
-    a.notes.unshift({ ts: nowISO(), text: "Moved to " + STAGE_BY_ID[status].label, type: "auto" });
-    save();
     refreshBoard();
+    dbUpdate(id, { status: status }).then(function (ok) {
+      if (!ok) { a.status = prev; refreshBoard(); return; }
+      return addNote(a, "Moved to " + STAGE_BY_ID[status].label, "auto");
+    });
   }
 
   function resolveLink(a) {
@@ -419,6 +567,15 @@
     var slots = state.settings.bookingSlots || [];
     if (slots.length === 1) return slots[0].url;
     return "";
+  }
+
+  // ---- Attachments (private bucket -> short-lived signed links) --------------
+  function openFile(f) {
+    db.storage.from("resumes").createSignedUrl(f.path, 120).then(function (res) {
+      if (res.error || !res.data) { alert("Couldn't open that file: " + (res.error ? res.error.message : "not found")); return; }
+      var link = h("a", { href: res.data.signedUrl, target: "_blank", rel: "noopener" });
+      document.body.appendChild(link); link.click(); link.remove();
+    });
   }
 
   // ---- Send email (invite / offer / rejection) ------------------------------
@@ -458,15 +615,18 @@
       sendBtn.textContent = "Sending…";
       sendEmail(a.email, subjectInput.value, bodyInput.value).then(function (ok) {
         if (!ok) { sendBtn.removeAttribute("disabled"); sendBtn.textContent = "Send email"; return; }
-        a.notes = a.notes || [];
-        a.notes.unshift({ ts: nowISO(), text: SEND_META[kind].logged, type: "auto" });
-        if (kind === "invite" && a.status === "review") a.status = "invited";
-        a.updatedAt = nowISO();
-        save();
-        toast(SEND_META[kind].logged);
-        closeSend();
-        closeModal();
-        render();
+        var chain = addNote(a, SEND_META[kind].logged, "auto");
+        if (kind === "invite" && a.status === "review") {
+          chain = chain.then(function () {
+            return dbUpdate(a.id, { status: "invited" }).then(function (saved) { if (saved) a.status = "invited"; });
+          });
+        }
+        chain.then(function () {
+          toast(SEND_META[kind].logged);
+          closeSend();
+          closeModal();
+          render();
+        });
       });
     } });
     var copyBtn = h("button", { class: "btn btn-secondary btn-sm", type: "button", text: "Copy instead", onclick: function () {
@@ -490,11 +650,15 @@
     document.addEventListener("keydown", onSendEsc);
   }
 
+  // The endpoint requires a committee session: we pass the reviewer's access token.
   function sendEmail(to, subject, text) {
-    return fetch("/api/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to: to, subject: subject, text: text }),
+    return db.auth.getSession().then(function (s) {
+      var token = s.data && s.data.session ? s.data.session.access_token : "";
+      return fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({ to: to, subject: subject, text: text }),
+      });
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok || !data.ok) {
@@ -518,12 +682,43 @@
   }
   function onEsc(e) { if (e.key === "Escape") closeModal(); }
 
+  // Read-only block showing what the applicant submitted on the public form.
+  function buildSubmission(a) {
+    var rows = [];
+    function row(label, node) {
+      rows.push(h("div", { class: "crm-sub-row" }, [h("div", { class: "k", text: label }), h("div", { class: "v" }, [node])]));
+    }
+    function txt(v) { return document.createTextNode(v); }
+    if (a.degree) row("Degree", txt(a.degree));
+    if (a.yearLevel) row("Expected graduation", txt(a.yearLevel));
+    if (a.roleSecondary) row("Second choice", txt(a.roleSecondary));
+    if (a.linkedin) row("Link", h("a", { href: a.linkedin, target: "_blank", rel: "noopener noreferrer", text: a.linkedin }));
+    if (a.statement) row("Why join", h("div", { class: "crm-sub-statement", text: a.statement }));
+    if (a.files.length) {
+      var list = h("div", { class: "crm-files" }, a.files.map(function (f) {
+        return h("button", { type: "button", class: "crm-file", onclick: function () { openFile(f); } }, [
+          h("span", { class: "fi", text: f.kind === "resume" ? "📄 Resume" : "📎 Attachment" }),
+          h("span", { class: "fn", text: f.name || "file" }),
+          h("span", { class: "fs", text: fmtSize(f.size) }),
+        ]);
+      }));
+      row("Files", list);
+    }
+    if (!rows.length) return null;
+    row("Submitted", txt(fmtDateTime(a.createdAt)));
+    return h("div", { class: "crm-field" }, [
+      h("label", { text: "Application" }),
+      h("div", { class: "crm-sub" }, rows),
+    ]);
+  }
+
   function openModal(id) {
     var a = byId(id);
     if (!a) return;
 
     // Working copy so Cancel discards changes.
     var draft = JSON.parse(JSON.stringify(a));
+    var pendingNotes = [];   // manual notes typed in this session, inserted on Save
     var slots = state.settings.bookingSlots || [];
 
     var f = {};
@@ -629,7 +824,7 @@
       }
       manual.forEach(function (n) {
         notesWrap.appendChild(h("div", { class: "crm-note-item" }, [
-          h("div", { class: "t", text: fmtDateTime(n.ts) }),
+          h("div", { class: "t", text: (n.author ? n.author + " · " : "") + fmtDateTime(n.ts) }),
           h("div", { class: "b", text: n.text }),
         ]));
       });
@@ -641,8 +836,10 @@
       onclick: function () {
         var t = noteInput.value.trim();
         if (!t) return;
+        var n = { ts: nowISO(), text: t, type: "manual", author: "" };
         draft.notes = draft.notes || [];
-        draft.notes.unshift({ ts: nowISO(), text: t, type: "manual" });
+        draft.notes.unshift(n);
+        pendingNotes.push(n);
         noteInput.value = "";
         paintNotes();
       },
@@ -656,18 +853,19 @@
     } else {
       autoEntries.forEach(function (n) {
         activityWrap.appendChild(h("div", { class: "crm-note-item crm-note-auto" }, [
-          h("div", { class: "t", text: fmtDateTime(n.ts) }),
+          h("div", { class: "t", text: (n.author ? n.author + " · " : "") + fmtDateTime(n.ts) }),
           h("div", { class: "b", text: n.text }),
         ]));
       });
     }
 
     var body = h("div", { class: "crm-panel-body" }, [
+      buildSubmission(a),
       h("div", { class: "crm-row" }, [ field("name", "Full name", { required: true }), field("email", "Email", { type: "email" }) ]),
-      h("div", { class: "crm-row" }, [ field("phone", "Phone"), field("role", "Role applied for", { placeholder: "e.g. Marketing officer" }) ]),
+      h("div", { class: "crm-row" }, [ field("phone", "Phone"), field("role", "Team applied for", { placeholder: "e.g. Marketing" }) ]),
       h("div", { class: "crm-row" }, [
         h("div", { class: "crm-field" }, [ h("label", { text: "Assigned to" }), assigneeSel ]),
-        field("resume", "Resume link", { type: "url", placeholder: "Drive / link" }),
+        field("resume", "Resume link (optional)", { type: "url", placeholder: "Only for imported applicants" }),
       ]),
       h("div", { class: "crm-field" }, [
         h("label", { text: "Interview slot" }),
@@ -696,22 +894,41 @@
       ]),
     ]);
 
+    var saveBtn = h("button", { class: "btn btn-primary btn-sm", type: "button", text: "Save", onclick: function () {
+      if (!draft.name.trim()) { f.name.focus(); f.name.style.borderColor = "#e0607a"; return; }
+      var patch = changesBetween(a, draft);
+      var hasPatch = Object.keys(patch).length > 0;
+      saveBtn.setAttribute("disabled", "");
+      saveBtn.textContent = "Saving…";
+      (hasPatch ? dbUpdate(id, patch) : Promise.resolve(true)).then(function (ok) {
+        if (!ok) { saveBtn.removeAttribute("disabled"); saveBtn.textContent = "Save"; return; }
+        var inserts = pendingNotes.map(function (n) { return { application_id: id, type: "manual", text: n.text }; });
+        if (patch.status) inserts.push({ application_id: id, type: "auto", text: "Moved to " + STAGE_BY_ID[patch.status].label });
+        var q = inserts.length ? db.from("application_notes").insert(inserts) : Promise.resolve({});
+        return q.then(function (res) {
+          if (res && res.error) toast("Saved, but notes failed: " + res.error.message);
+          closeModal();
+          return loadAll().then(render);
+        });
+      });
+    } });
+
     var foot = h("div", { class: "crm-panel-foot" }, [
       h("button", { class: "link-danger", type: "button", text: "Delete", onclick: function () {
-        if (confirm("Delete " + (draft.name || "this applicant") + "? This cannot be undone.")) {
-          state.applicants = state.applicants.filter(function (x) { return x.id !== id; });
-          save(); closeModal(); render();
-        }
+        var n = a.files.length;
+        if (!confirm("Delete " + (draft.name || "this applicant") + (n ? " and their " + n + " attached file" + (n > 1 ? "s" : "") : "") + "? This cannot be undone.")) return;
+        var paths = a.files.map(function (x) { return x.path; });
+        (paths.length ? db.storage.from("resumes").remove(paths) : Promise.resolve({})).then(function () {
+          return db.from("applications").delete().eq("id", id).select("id");
+        }).then(function (res) {
+          if (res.error || !res.data || !res.data.length) { alert("Couldn't delete: " + (res.error ? res.error.message : "no permission")); return; }
+          closeModal();
+          return loadAll().then(render);
+        });
       } }),
       h("span", { class: "spacer" }),
       h("button", { class: "btn btn-secondary btn-sm", type: "button", text: "Cancel", onclick: closeModal }),
-      h("button", { class: "btn btn-primary btn-sm", type: "button", text: "Save", onclick: function () {
-        if (!draft.name.trim()) { f.name.focus(); f.name.style.borderColor = "#e0607a"; return; }
-        draft.updatedAt = nowISO();
-        var idx = state.applicants.findIndex(function (x) { return x.id === id; });
-        state.applicants[idx] = draft;
-        save(); closeModal(); render();
-      } }),
+      saveBtn,
     ]);
 
     var panel = h("div", { class: "crm-panel", role: "dialog", "aria-modal": "true" }, [
@@ -722,6 +939,7 @@
       body, foot,
     ]);
 
+    closeModal();
     overlay = h("div", { class: "crm-modal", onclick: function (e) { if (e.target === overlay) closeModal(); } }, [panel]);
     document.body.appendChild(overlay);
     document.addEventListener("keydown", onEsc);
@@ -738,13 +956,13 @@
   function offerMessage(a) {
     return "Hi " + firstName(a.name) + ",\n\n" +
       "Congratulations! We'd love to offer you a position on the StartUp Link UniMelb committee" +
-      (a.role ? " as " + a.role : "") + ". We were really impressed with you throughout the process " +
+      (a.role ? " in the " + a.role + " team" : "") + ". We were really impressed with you throughout the process " +
       "and think you'll be a great addition to the team.\n\n" +
       "We'll be in touch shortly with next steps. Welcome aboard!\n\nStartUp Link UniMelb";
   }
   function rejectionMessage(a) {
     return "Hi " + firstName(a.name) + ",\n\n" +
-      "Thank you for taking the time to apply" + (a.role ? " for " + a.role : "") +
+      "Thank you for taking the time to apply" + (a.role ? " to the " + a.role + " team" : "") +
       " and for chatting with us during the interview process. After a lot of consideration, " +
       "we won't be moving forward with your application on this occasion.\n\n" +
       "This was a genuinely competitive round and we'd encourage you to apply again in future. " +
@@ -781,7 +999,7 @@
     toastTimer = setTimeout(function () { if (toastEl) toastEl.style.opacity = "0"; }, 2200);
   }
 
-  // ---- Settings: booking links ----------------------------------------------
+  // ---- Settings: booking links (shared across the committee) -------------------
   function openBookingSlotsModal() {
     function closeBS() { bsOverlay.remove(); document.removeEventListener("keydown", onBSEsc); }
     function onBSEsc(e) { if (e.key === "Escape") closeBS(); }
@@ -796,8 +1014,11 @@
           h("div", { class: "b", text: s.label + " — " + DAY_NAMES[s.day] + " " + s.start + (s.end ? "–" + s.end : "") }),
           h("div", { class: "t", text: s.url }),
           h("button", { class: "link-danger", type: "button", text: "Remove", style: "margin-top:0.4rem", onclick: function () {
-            state.settings.bookingSlots = (state.settings.bookingSlots || []).filter(function (x) { return x.id !== s.id; });
-            save(); paintList();
+            db.from("booking_slots").delete().eq("id", s.id).then(function (res) {
+              if (res.error) { alert("Couldn't remove: " + res.error.message); return; }
+              state.settings.bookingSlots = (state.settings.bookingSlots || []).filter(function (x) { return x.id !== s.id; });
+              paintList();
+            });
           } }),
         ]));
       });
@@ -811,17 +1032,20 @@
     var urlInput = h("input", { type: "url", placeholder: "https://zcal.co/…" });
 
     var addBtn = h("button", { class: "btn btn-primary btn-sm", type: "button", text: "Add link", onclick: function () {
-      if (!urlInput.getAttribute("value") && !urlInput.value) { urlInput.focus(); return; }
-      var url = urlInput.value || urlInput.getAttribute("value") || "";
-      if (!url.trim()) { urlInput.focus(); return; }
-      state.settings.bookingSlots = state.settings.bookingSlots || [];
-      state.settings.bookingSlots.push({
-        id: uid(), label: (labelInput.value || "").trim() || "Interview slot",
-        day: parseInt(daySel.value, 10) || 0, start: startInput.value || "00:00", end: endInput.value || "",
-        url: url.trim(),
+      var url = (urlInput.value || "").trim();
+      if (!url) { urlInput.focus(); return; }
+      db.from("booking_slots").insert({
+        label: (labelInput.value || "").trim() || "Interview slot",
+        day: parseInt(daySel.value, 10) || 0,
+        start_time: startInput.value || "00:00",
+        end_time: endInput.value || "",
+        url: url,
+      }).select().single().then(function (res) {
+        if (res.error) { alert("Couldn't add: " + res.error.message); return; }
+        state.settings.bookingSlots.push(slotFromRow(res.data));
+        paintList();
+        labelInput.value = ""; urlInput.value = "";
       });
-      save(); paintList();
-      labelInput.value = ""; urlInput.value = "";
     } });
 
     var panel = h("div", { class: "crm-panel", role: "dialog", "aria-modal": "true" }, [
@@ -830,7 +1054,7 @@
         h("button", { class: "crm-close", type: "button", "aria-label": "Close", text: "×", onclick: closeBS }),
       ]),
       h("div", { class: "crm-panel-body" }, [
-        h("p", { class: "crm-help", text: "Add a link for each recurring interview slot — useful if different days use different zcal links. Picking a slot on an applicant auto-fills the link and suggests an interview time." }),
+        h("p", { class: "crm-help", text: "Add a link for each recurring interview slot — useful if different days use different zcal links. Shared with the whole committee. Picking a slot on an applicant auto-fills the link and suggests an interview time." }),
         listWrap,
         h("div", { class: "crm-row" }, [
           h("div", { class: "crm-field" }, [ h("label", { text: "Label" }), labelInput ]),
@@ -865,35 +1089,22 @@
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
   }
 
+  // Snapshot of everything in the board (file metadata only, not the files themselves).
   function exportJSON() {
     download("sul-recruitment-" + stamp() + ".json", JSON.stringify(state, null, 2), "application/json");
   }
 
-  function importJSONPrompt() { pickFile(".json,application/json", function (text) {
-    try {
-      var parsed = JSON.parse(text);
-      var incoming = Array.isArray(parsed) ? { applicants: parsed, settings: {} } : parsed;
-      if (!incoming || !Array.isArray(incoming.applicants)) { alert("That file doesn't look like a CRM export."); return; }
-      if (!confirm("Import " + incoming.applicants.length + " applicant(s)? This replaces your current data. Export a backup first if unsure.")) return;
-      var settings = incoming.settings || state.settings || {};
-      settings.bookingSlots = Array.isArray(settings.bookingSlots) ? settings.bookingSlots : [];
-      state = {
-        applicants: incoming.applicants.map(normalise),
-        settings: settings,
-      };
-      save(); render(); toast("Imported " + state.applicants.length + " applicant(s)");
-    } catch (e) { alert("Could not read that JSON file."); }
-  }); }
-
-  var CSV_COLS = ["name", "email", "phone", "role", "assignee", "status", "rating", "resume", "booking", "interviewAt", "createdAt"];
+  var CSV_COLS = ["name", "email", "phone", "degree", "yearLevel", "role", "roleSecondary", "assignee", "status",
+    "rating", "linkedin", "statement", "resume", "booking", "interviewAt", "createdAt"];
 
   function exportCSV() {
-    var rows = [CSV_COLS.concat(["notes"]).join(",")];
+    var rows = [CSV_COLS.concat(["attachments", "notes"]).join(",")];
     state.applicants.forEach(function (a) {
       var line = CSV_COLS.map(function (c) {
         if (c === "assignee") return csvCell(assigneeLabel(a.assignee));
         return csvCell(a[c]);
       });
+      line.push(csvCell(a.files.map(function (x) { return x.name; }).join(" | ")));
       var notes = (a.notes || []).map(function (n) { return fmtDateTime(n.ts) + ": " + n.text; }).join(" | ");
       line.push(csvCell(notes));
       rows.push(line.join(","));
@@ -902,19 +1113,19 @@
   }
   function csvCell(v) {
     v = v == null ? "" : String(v);
+    if (/^[=+\-@]/.test(v)) v = "'" + v; // stop spreadsheet formula injection from applicant-typed text
     if (/[",\n]/.test(v)) return '"' + v.replace(/"/g, '""') + '"';
     return v;
   }
 
+  // Adds rows to the shared board (never replaces). Handy for migrating an old spreadsheet.
   function importCSVPrompt() { pickFile(".csv,text/csv", function (text) {
     var rows = parseCSV(text);
     if (rows.length < 2) { alert("No data rows found in that CSV."); return; }
     var header = rows[0].map(function (c) { return c.trim().toLowerCase(); });
     var records = rows.slice(1).filter(function (r) { return r.join("").trim() !== ""; }).map(function (r) {
       var get = function (name) { var i = header.indexOf(name); return i === -1 ? "" : (r[i] || "").trim(); };
-      var status = normaliseStatus(get("status") || get("stage"));
-      var rating = normaliseRating(get("rating"));
-      return normalise({
+      return {
         name: get("name") || get("full name") || get("applicant"),
         email: get("email"),
         phone: get("phone") || get("mobile"),
@@ -922,15 +1133,28 @@
         assignee: assigneeIdFromLabel(get("assignee") || get("assigned to")),
         resume: get("resume") || get("resume link") || get("cv"),
         booking: get("booking") || get("booking link"),
-        status: status,
-        rating: rating,
-        notes: get("notes") ? [{ ts: nowISO(), text: get("notes"), type: "manual" }] : [],
-      });
+        status: normaliseStatus(get("status") || get("stage")),
+        rating: normaliseRating(get("rating")),
+        note: get("notes"),
+      };
     }).filter(function (a) { return a.name; });
     if (!records.length) { alert("Couldn't find any rows with a name. Make sure there's a 'name' column."); return; }
-    if (!confirm("Import " + records.length + " applicant(s) from CSV? They'll be added to your current data.")) return;
-    state.applicants = state.applicants.concat(records);
-    save(); render(); toast("Imported " + records.length + " applicant(s)");
+    if (!confirm("Import " + records.length + " applicant(s) from CSV? They'll be added to the shared board.")) return;
+
+    db.from("applications").insert(records.map(function (r) {
+      return { name: r.name, email: r.email, phone: r.phone, role: r.role, assignee: r.assignee,
+        resume_url: r.resume, booking: r.booking, status: r.status, rating: r.rating, consent: false };
+    })).select("id").then(function (res) {
+      if (res.error) { alert("Import failed: " + res.error.message); return; }
+      var notes = [];
+      res.data.forEach(function (row, i) {
+        if (records[i] && records[i].note) notes.push({ application_id: row.id, type: "manual", text: records[i].note });
+      });
+      return (notes.length ? db.from("application_notes").insert(notes) : Promise.resolve({})).then(function () {
+        toast("Imported " + records.length + " applicant(s)");
+        return loadAll().then(render);
+      });
+    });
   }); }
 
   function normaliseStatus(v) {
@@ -951,27 +1175,6 @@
     if (v === "n" || v === "no") return "no";
     if (v === "maybe" || v === "m") return "maybe";
     return "";
-  }
-  function normalise(a) {
-    return {
-      id: a.id || uid(),
-      name: a.name || "",
-      email: a.email || "",
-      phone: a.phone || "",
-      role: a.role || "",
-      assignee: ASSIGNEE_BY_ID[a.assignee] ? a.assignee : "",
-      resume: a.resume || "",
-      booking: a.booking || "",
-      bookingSlotId: a.bookingSlotId || "",
-      interviewAt: a.interviewAt || "",
-      status: STAGE_BY_ID[a.status] ? a.status : normaliseStatus(a.status),
-      rating: ["yes", "maybe", "no"].indexOf(a.rating) !== -1 ? a.rating : "",
-      notes: Array.isArray(a.notes) ? a.notes.map(function (n) {
-        return { ts: n.ts || nowISO(), text: n.text || "", type: n.type === "auto" ? "auto" : "manual" };
-      }) : [],
-      createdAt: a.createdAt || nowISO(),
-      updatedAt: a.updatedAt || nowISO(),
-    };
   }
 
   // RFC-4180-ish CSV parser (handles quotes, escaped quotes, commas, newlines).
@@ -1008,30 +1211,7 @@
     document.body.appendChild(input); input.click();
   }
 
-  function clearAll() {
-    if (!confirm("Delete ALL applicant data from this browser? Export a backup first if you might need it.")) return;
-    state = { applicants: [], settings: state.settings || { bookingSlots: [] } };
-    save(); render(); toast("All data cleared");
-  }
-
-  function loadSample() {
-    if (state.applicants.length && !confirm("Add sample applicants to your current data?")) return;
-    var samples = [
-      { name: "Maya Chen", email: "maya.chen@student.unimelb.edu.au", role: "Marketing officer", assignee: "md1", status: "applied", resume: "https://example.com/resume", createdAt: daysAgo(1) },
-      { name: "Tom Nguyen", email: "tom.n@student.unimelb.edu.au", role: "Events officer", assignee: "ed", status: "review", createdAt: daysAgo(3) },
-      { name: "Priya Sharma", email: "priya.s@student.unimelb.edu.au", role: "Partnerships officer", assignee: "erd", status: "invited", booking: "https://zcal.co/i/sample", createdAt: daysAgo(5) },
-      { name: "Jack Wilson", email: "jack.w@student.unimelb.edu.au", role: "Projects officer", assignee: "pd1", status: "booked", interviewAt: inDays(2), createdAt: daysAgo(6) },
-      { name: "Aisha Rahman", email: "aisha.r@student.unimelb.edu.au", role: "Marketing officer", assignee: "md2", status: "interviewed", rating: "yes", createdAt: daysAgo(8), notes: [{ ts: daysAgo(1), text: "Strong portfolio, great culture fit. Lean yes.", type: "manual" }] },
-      { name: "Liam O'Brien", email: "liam.o@student.unimelb.edu.au", role: "Events officer", assignee: "ed", status: "offer", rating: "yes", createdAt: daysAgo(10) },
-      { name: "Sofia Rossi", email: "sofia.r@student.unimelb.edu.au", role: "People & culture officer", assignee: "pcd", status: "rejected", rating: "no", createdAt: daysAgo(9), notes: [{ ts: daysAgo(2), text: "Not enough availability this semester.", type: "manual" }] },
-    ].map(normalise);
-    state.applicants = state.applicants.concat(samples);
-    save(); render(); toast("Sample data loaded");
-  }
-  function daysAgo(n) { return new Date(Date.now() - n * 86400000).toISOString(); }
-  function inDays(n) { return new Date(Date.now() + n * 86400000).toISOString(); }
-
   // ---- Go ------------------------------------------------------------------
-  window.SUL_CRM = { render: render };
-  render();
+  // portal.html calls start(db) after a committee member signs in, and stop() on sign-out.
+  window.SUL_CRM = { start: start, stop: stop };
 })();

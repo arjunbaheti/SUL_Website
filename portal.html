@@ -28,6 +28,7 @@
           <li><a href="events.html">What's on</a></li>
           <li><a href="partners.html">Partner with us</a></li>
           <li><a href="committee.html">Committee</a></li>
+          <li><a href="recruitment.html">Recruitment</a></li>
           <li><a class="nav-cta" href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener">Join now</a></li>
         </ul>
       </nav>
@@ -39,6 +40,7 @@
       <a href="events.html">What's on</a>
       <a href="partners.html">Partner with us</a>
       <a href="committee.html">Committee</a>
+      <a href="recruitment.html">Recruitment</a>
       <a href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener"><strong>Join now →</strong></a>
     </div>
   </header>
@@ -52,16 +54,16 @@
           <p>Intended for Committee and Executives only.</p>
         </div>
 
-        <form class="card" id="portal-login" data-spotlight autocomplete="off">
+        <form class="card" id="portal-login" data-spotlight>
           <div class="form-field">
-            <label for="username">Username</label>
-            <input type="text" id="username" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" />
+            <label for="username">Committee email</label>
+            <input type="email" id="username" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" />
           </div>
           <div class="form-field">
             <label for="password">Password</label>
             <input type="password" id="password" name="password" required autocomplete="current-password" />
           </div>
-          <button class="btn btn-primary btn-block" data-magnetic type="submit">Sign in</button>
+          <button class="btn btn-primary btn-block" data-magnetic type="submit" id="login-submit">Sign in</button>
           <p class="form-hint" id="login-error" role="alert" aria-live="assertive" style="color: #ff8a8a;"></p>
         </form>
       </div>
@@ -86,63 +88,89 @@
   </footer>
 
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
+  <script src="assets/js/supabase-client.js"></script>
   <script src="assets/js/recruitment.js"></script>
   <script>
-    // NOTE: This is a front-end placeholder gate only. The credentials below are
-    // visible in the page source, so this provides NO real security. Replace with
-    // a proper backend / auth provider before the portal holds anything sensitive.
+    // Real sign-in via Supabase Auth. Access is enforced by the database (Row Level
+    // Security + the committee_members allowlist in supabase/schema.sql), not by this
+    // page: even if someone unhides #portal-view they get no data without a valid session.
     (function () {
-      var VALID_USER = "test";
-      var VALID_PASS = "test";
-      var KEY = "sul-portal-auth";
-
+      var db = window.SUL_DB;
       var loginView = document.getElementById("login-view");
       var portalView = document.getElementById("portal-view");
       var form = document.getElementById("portal-login");
       var error = document.getElementById("login-error");
+      var submit = document.getElementById("login-submit");
 
       function showPortal() {
         loginView.hidden = true;
         portalView.hidden = false;
-        // Trigger reveal animations now that the section is visible.
-        portalView.querySelectorAll(".reveal").forEach(function (n) {
-          n.classList.add("is-visible");
-        });
+        portalView.querySelectorAll(".reveal").forEach(function (n) { n.classList.add("is-visible"); });
+        window.SUL_CRM.start(db);
       }
-
       function showLogin() {
+        window.SUL_CRM.stop();
         portalView.hidden = true;
         loginView.hidden = false;
       }
 
-      // Stay signed in for the session (cleared when the tab/browser closes).
-      if (sessionStorage.getItem(KEY) === "1") {
-        showPortal();
+      if (!db) {
+        error.textContent = window.SUL_DB_ERROR || "Backend unavailable.";
+        submit.disabled = true;
+        return;
       }
+
+      // Signed in AND on the committee allowlist?
+      function checkCommittee() {
+        return db.rpc("is_committee").then(function (res) { return !res.error && res.data === true; });
+      }
+
+      // Resume an existing session on page load.
+      db.auth.getSession().then(function (res) {
+        if (!res.data || !res.data.session) return;
+        return checkCommittee().then(function (ok) {
+          if (ok) showPortal(); else return db.auth.signOut();
+        });
+      });
 
       form.addEventListener("submit", function (evt) {
         evt.preventDefault();
-        var u = document.getElementById("username").value.trim();
-        var p = document.getElementById("password").value;
-        if (u === VALID_USER && p === VALID_PASS) {
-          error.textContent = "";
-          sessionStorage.setItem(KEY, "1");
-          form.reset();
-          showPortal();
-        } else {
-          error.textContent = "Incorrect username or password.";
+        error.textContent = "";
+        submit.disabled = true;
+        db.auth.signInWithPassword({
+          email: document.getElementById("username").value.trim(),
+          password: document.getElementById("password").value,
+        }).then(function (res) {
+          if (res.error) throw new Error("Incorrect email or password.");
+          return checkCommittee().then(function (ok) {
+            if (!ok) {
+              return db.auth.signOut().then(function () {
+                throw new Error("This account isn't on the committee reviewer list.");
+              });
+            }
+            form.reset();
+            showPortal();
+          });
+        }).catch(function (err) {
+          error.textContent = err.message || "Couldn't sign in.";
           document.getElementById("password").value = "";
           document.getElementById("password").focus();
-        }
+        }).then(function () { submit.disabled = false; });
       });
 
       // The Sign out button is rendered by the CRM, so wire it via delegation.
       document.addEventListener("click", function (e) {
         var t = e.target;
         if (t && t.closest && t.closest("[data-portal-logout]")) {
-          sessionStorage.removeItem(KEY);
-          showLogin();
+          db.auth.signOut().then(showLogin);
         }
+      });
+
+      // Signed out elsewhere (other tab, expired session): drop back to the login form.
+      db.auth.onAuthStateChange(function (event) {
+        if (event === "SIGNED_OUT") showLogin();
       });
     })();
   </script>

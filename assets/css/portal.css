@@ -354,3 +354,46 @@
 .crm-panel-foot .link-danger:hover { text-decoration: underline; }
 
 .crm-help { font-size: 0.72rem; color: var(--sul-muted); margin-top: 0.35rem; }
+
+/* ---- Submitted application block + file buttons (portal modal) ---- */
+.crm-sub {
+  border: 1px solid var(--sul-border);
+  border-radius: 12px;
+  padding: 0.5rem 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+.crm-sub-row {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.88rem;
+}
+.crm-sub-row + .crm-sub-row { border-top: 1px solid var(--sul-border); }
+.crm-sub-row .k { color: var(--sul-muted); }
+.crm-sub-row .v { min-width: 0; overflow-wrap: anywhere; }
+.crm-sub-row .v a { color: var(--sul-accent); }
+.crm-sub-statement { white-space: pre-wrap; max-height: 12rem; overflow: auto; }
+.crm-files { display: flex; flex-direction: column; gap: 0.4rem; }
+.crm-file {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--sul-border);
+  border-radius: 10px;
+  background: var(--sul-navy);
+  color: var(--sul-ink);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.crm-file:hover { border-color: var(--sul-primary); }
+.crm-file .fi { white-space: nowrap; font-weight: 600; }
+.crm-file .fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-file .fs { color: var(--sul-muted); white-space: nowrap; }
+@media (max-width: 560px) {
+  .crm-sub-row { grid-template-columns: 1fr; gap: 0.15rem; }
+}

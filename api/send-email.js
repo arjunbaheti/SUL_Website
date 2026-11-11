@@ -3,11 +3,41 @@
 // Project Settings -> Environment Variables), never from source. This is the
 // only piece of the site that isn't static: everything else is still plain
 // HTML/CSS/JS with no build step.
+//
+// Callers must be signed-in committee members: the portal sends its Supabase access
+// token as "Authorization: Bearer <token>", and we ask the database (is_committee(),
+// see supabase/schema.sql) whether that token belongs to someone on the allowlist.
+// Without this, anyone on the internet could send mail from the club's address.
 const nodemailer = require("nodemailer");
+
+async function isCommittee(token) {
+  var url = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  var anon = process.env.SUPABASE_ANON_KEY;
+  if (!url || !anon) return { ok: false, status: 500, error: "Missing env var(s) on the server: SUPABASE_URL and/or SUPABASE_ANON_KEY (same values as assets/js/config.js)." };
+  if (!token) return { ok: false, status: 401, error: "Sign in to the committee portal first." };
+  try {
+    var r = await fetch(url + "/rest/v1/rpc/is_committee", {
+      method: "POST",
+      headers: { apikey: anon, Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!r.ok) return { ok: false, status: 401, error: "Your session has expired. Sign in again." };
+    return (await r.json()) === true ? { ok: true } : { ok: false, status: 403, error: "This account isn't on the committee reviewer list." };
+  } catch (e) {
+    return { ok: false, status: 502, error: "Couldn't verify your session: " + ((e && e.message) || "network error") };
+  }
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+
+  var auth = String(req.headers.authorization || "");
+  var check = await isCommittee(auth.indexOf("Bearer ") === 0 ? auth.slice(7).trim() : "");
+  if (!check.ok) {
+    res.status(check.status).json({ ok: false, error: check.error });
     return;
   }
 

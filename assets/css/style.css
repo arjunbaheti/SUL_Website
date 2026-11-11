@@ -1979,3 +1979,46 @@ h1, h2 {
     transform: none;
   }
 }
+
+/* ---------- Recruitment application form ---------- */
+.apply-group {
+  border: 0;
+  padding: 0;
+  margin: 0 0 1.4rem;
+  min-width: 0;
+}
+.apply-group legend {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 0;
+  margin-bottom: 0.9rem;
+}
+.form-field .req { color: #ff8a8a; }
+.form-field .opt { color: var(--sul-muted); font-weight: 400; }
+.form-field input[type="file"] { padding: 0.6rem 0.8rem; cursor: pointer; }
+.form-field textarea { resize: vertical; min-height: 8rem; }
+.apply-hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.form-field .check {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.form-field .check input {
+  width: auto;
+  margin-top: 0.2rem;
+  flex: none;
+}
+.apply-status { min-height: 1.2rem; }
+.apply-success h3 { margin-bottom: 0.6rem; }
+.apply-success p { margin-bottom: 0.9rem; }
