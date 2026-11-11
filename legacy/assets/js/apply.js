@@ -57,9 +57,21 @@
   form.addEventListener("input", clearInvalid);
   form.addEventListener("change", clearInvalid);
 
+  // 200-word answers; we allow a little slack (5 words) so nobody is blocked over a stray word.
+  var WORD_LIMIT = 200, WORD_SLACK = 5;
+  function wordCount(text) {
+    var t = (text || "").trim();
+    return t ? t.split(/\s+/).length : 0;
+  }
   [statement, experience].forEach(function (ta) {
     var out = document.getElementById(ta.id + "-count");
-    ta.addEventListener("input", function () { out.textContent = String(ta.value.length); });
+    var hint = document.getElementById(ta.id + "-hint");
+    function paint() {
+      var n = wordCount(ta.value);
+      out.textContent = String(n);
+      hint.style.color = n > WORD_LIMIT ? "#ff8a8a" : "";
+    }
+    ta.addEventListener("input", paint);
   });
 
   if (!window.SUL_DB) {
@@ -137,6 +149,8 @@
     if (!val("role")) fail(f.role, "Please choose a first-choice team.");
     if (!val("statement")) fail(f.statement, "Please tell us why you're interested in joining.");
     if (!val("experience")) fail(f.experience, "Please tell us what skills and experience you could bring.");
+    if (wordCount(val("statement")) > WORD_LIMIT + WORD_SLACK) fail(f.statement, "Your first answer is over the 200 word limit. Please shorten it.");
+    if (wordCount(val("experience")) > WORD_LIMIT + WORD_SLACK) fail(f.experience, "Your second answer is over the 200 word limit. Please shorten it.");
     var link = val("linkedin");
     if (link && (/\s/.test(link) || !/\./.test(link))) fail(f.linkedin, "That doesn't look like a link. Try linkedin.com/in/yourname");
     if (link && !/^[a-z][a-z0-9+.-]*:\/\//i.test(link)) link = "https://" + link;
