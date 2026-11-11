@@ -33,7 +33,7 @@
   var roleSel = document.getElementById("a-role");
   var role2Sel = document.getElementById("a-role2");
   var statement = document.getElementById("a-statement");
-  var counter = document.getElementById("a-statement-count");
+  var experience = document.getElementById("a-experience");
 
   function opt(value, text) {
     var o = document.createElement("option");
@@ -48,7 +48,19 @@
   role2Sel.appendChild(opt("", "Only interested in my first preference"));
   ROLES.forEach(function (r) { roleSel.appendChild(opt(r, r)); role2Sel.appendChild(opt(r, r)); });
 
-  statement.addEventListener("input", function () { counter.textContent = String(statement.value.length); });
+  function clearInvalid(e) {
+    if (e.target.getAttribute && e.target.getAttribute("aria-invalid")) {
+      e.target.removeAttribute("aria-invalid");
+      setStatus("");
+    }
+  }
+  form.addEventListener("input", clearInvalid);
+  form.addEventListener("change", clearInvalid);
+
+  [statement, experience].forEach(function (ta) {
+    var out = document.getElementById(ta.id + "-count");
+    ta.addEventListener("input", function () { out.textContent = String(ta.value.length); });
+  });
 
   if (!window.SUL_DB) {
     unavailable.hidden = false;
@@ -115,18 +127,31 @@
     var resume = form.elements.resume.files[0];
     var extra = form.elements.extra.files[0];
 
-    var problem = "";
-    if (!val("name")) problem = "Please enter your full name.";
-    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val("email"))) problem = "Please enter a valid email address.";
-    else if (!val("degree")) problem = "Please enter your degree.";
-    else if (!val("year")) problem = "Please select your expected graduation date.";
-    else if (!val("role")) problem = "Please choose a first-choice team.";
-    else if (!val("statement")) problem = "Please tell us why you want to join.";
-    else if (!resume) problem = "Please attach your resume.";
-    else if (val("linkedin") && !/^https?:\/\//i.test(val("linkedin"))) problem = "Links should start with https://";
-    else if (!form.elements.consent.checked) problem = "Please tick the consent box to continue.";
-    problem = problem || checkFile(resume, RESUME_TYPES, "Resume") || checkFile(extra, EXTRA_TYPES, "Extra attachment");
-    if (problem) { setStatus(problem, true); return; }
+    var f = form.elements;
+    var bad = null, problem = "";
+    function fail(el, msg) { if (!bad) { bad = el; problem = msg; } }
+    if (!val("name")) fail(f.name, "Please enter your full name.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val("email"))) fail(f.email, "Please enter a valid email address.");
+    if (!val("degree")) fail(f.degree, "Please enter your degree.");
+    if (!val("year")) fail(f.year, "Please select your expected graduation date.");
+    if (!val("role")) fail(f.role, "Please choose a first-choice team.");
+    if (!val("statement")) fail(f.statement, "Please tell us why you're interested in joining.");
+    if (!val("experience")) fail(f.experience, "Please tell us what skills and experience you could bring.");
+    var link = val("linkedin");
+    if (link && (/\s/.test(link) || !/\./.test(link))) fail(f.linkedin, "That doesn't look like a link. Try linkedin.com/in/yourname");
+    if (link && !/^[a-z][a-z0-9+.-]*:\/\//i.test(link)) link = "https://" + link;
+    if (!resume) fail(f.resume, "Please attach your resume.");
+    var fileProblem = checkFile(resume, RESUME_TYPES, "Resume");
+    if (fileProblem) fail(f.resume, fileProblem);
+    fileProblem = checkFile(extra, EXTRA_TYPES, "Extra attachment");
+    if (fileProblem) fail(f.extra, fileProblem);
+    if (!f.consent.checked) fail(f.consent, "Please tick the consent box to continue.");
+    if (bad) {
+      bad.setAttribute("aria-invalid", "true");
+      bad.focus();
+      setStatus(problem, true);
+      return;
+    }
 
     submitBtn.disabled = true;
     submitBtn.textContent = "Submitting…";
@@ -148,7 +173,10 @@
         role: val("role"),
         role_secondary: val("role2") === val("role") ? "" : val("role2"),
         statement: val("statement"),
-        linkedin: val("linkedin"),
+        experience: val("experience"),
+        linkedin: link,
+        questions: val("questions"),
+        extra_note: val("extra_note"),
         files: files,
         consent: true,
       });

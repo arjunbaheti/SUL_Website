@@ -103,7 +103,10 @@
       role: r.role || "",
       roleSecondary: r.role_secondary || "",
       statement: r.statement || "",
+      experience: r.experience || "",
       linkedin: r.linkedin || "",
+      questions: r.questions || "",
+      extraNote: r.extra_note || "",
       files: Array.isArray(r.files) ? r.files : [],
       resume: r.resume_url || "",
       assignee: ASSIGNEE_BY_ID[r.assignee] ? r.assignee : "",
@@ -188,7 +191,7 @@
   function dbUpdate(id, patch) {
     return db.from("applications").update(patch).eq("id", id).select("id").then(function (res) {
       if (res.error || !res.data || !res.data.length) {
-        alert("Couldn't save: " + (res.error ? res.error.message : "you may not have permission, or the applicant was deleted."));
+        toast("Couldn't save: " + (res.error ? res.error.message : "you may not have permission, or the applicant was deleted."));
         return false;
       }
       return true;
@@ -571,10 +574,17 @@
 
   // ---- Attachments (private bucket -> short-lived signed links) --------------
   function openFile(f) {
+    // Open the tab synchronously (inside the click) so popup blockers allow it, then point it at the signed link.
+    var win = window.open("", "_blank");
+    if (win) win.opener = null;
     db.storage.from("resumes").createSignedUrl(f.path, 120).then(function (res) {
-      if (res.error || !res.data) { alert("Couldn't open that file: " + (res.error ? res.error.message : "not found")); return; }
-      var link = h("a", { href: res.data.signedUrl, target: "_blank", rel: "noopener" });
-      document.body.appendChild(link); link.click(); link.remove();
+      if (res.error || !res.data) {
+        if (win) win.close();
+        toast("Couldn't open that file: " + (res.error ? res.error.message : "not found"));
+        return;
+      }
+      if (win) win.location.href = res.data.signedUrl;
+      else window.location.href = res.data.signedUrl;
     });
   }
 
@@ -592,7 +602,7 @@
   }
 
   function openSendModal(a, kind) {
-    if (!a.email) { alert("This applicant doesn't have an email address on file."); return; }
+    if (!a.email) { toast("This applicant doesn't have an email address on file."); return; }
     var body;
     if (kind === "invite") {
       var link = resolveLink(a);
@@ -662,13 +672,13 @@
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok || !data.ok) {
-          alert("Couldn't send: " + (data.error || ("HTTP " + res.status)));
+          toast("Couldn't send: " + (data.error || ("HTTP " + res.status)));
           return false;
         }
         return true;
       });
     }, function (err) {
-      alert("Couldn't send — check your connection. (" + (err && err.message) + ")");
+      toast("Couldn't send. Check your connection. (" + (err && err.message) + ")");
       return false;
     });
   }
@@ -692,8 +702,11 @@
     if (a.degree) row("Degree", txt(a.degree));
     if (a.yearLevel) row("Expected graduation", txt(a.yearLevel));
     if (a.roleSecondary) row("Second choice", txt(a.roleSecondary));
-    if (a.linkedin) row("Link", h("a", { href: a.linkedin, target: "_blank", rel: "noopener noreferrer", text: a.linkedin }));
+    if (a.linkedin) row("Link", h("a", { href: /^[a-z][a-z0-9+.-]*:\/\//i.test(a.linkedin) ? a.linkedin : "https://" + a.linkedin, target: "_blank", rel: "noopener noreferrer", text: a.linkedin }));
     if (a.statement) row("Why join", h("div", { class: "crm-sub-statement", text: a.statement }));
+    if (a.experience) row("Skills & experience", h("div", { class: "crm-sub-statement", text: a.experience }));
+    if (a.questions) row("Questions", h("div", { class: "crm-sub-statement", text: a.questions }));
+    if (a.extraNote) row("Note on attachment", txt(a.extraNote));
     if (a.files.length) {
       var list = h("div", { class: "crm-files" }, a.files.map(function (f) {
         return h("button", { type: "button", class: "crm-file", onclick: function () { openFile(f); } }, [
@@ -808,7 +821,7 @@
       class: "btn btn-secondary btn-sm", type: "button", text: "Copy invite",
       onclick: function () {
         var link = resolveLink(draft);
-        if (!link) { alert("Add a booking link or pick an interview slot first."); return; }
+        if (!link) { toast("Add a booking link or pick an interview slot first."); return; }
         copyText(inviteMessage(draft, link));
       },
     });
@@ -918,12 +931,15 @@
         var n = a.files.length;
         if (!confirm("Delete " + (draft.name || "this applicant") + (n ? " and their " + n + " attached file" + (n > 1 ? "s" : "") : "") + "? This cannot be undone.")) return;
         var paths = a.files.map(function (x) { return x.path; });
-        (paths.length ? db.storage.from("resumes").remove(paths) : Promise.resolve({})).then(function () {
-          return db.from("applications").delete().eq("id", id).select("id");
-        }).then(function (res) {
-          if (res.error || !res.data || !res.data.length) { alert("Couldn't delete: " + (res.error ? res.error.message : "no permission")); return; }
-          closeModal();
-          return loadAll().then(render);
+        // Delete the row first (notes go with it via ON DELETE CASCADE), then the files.
+        db.from("applications").delete().eq("id", id).select("id").then(function (res) {
+          if (res.error || !res.data || !res.data.length) { toast("Couldn't delete: " + (res.error ? res.error.message : "no permission")); return; }
+          var cleanup = paths.length ? db.storage.from("resumes").remove(paths) : Promise.resolve({});
+          return cleanup.then(function (r) {
+            if (r && r.error) toast("Applicant deleted, but their files couldn't be removed: " + r.error.message);
+            closeModal();
+            return loadAll().then(render);
+          });
         });
       } }),
       h("span", { class: "spacer" }),
@@ -996,7 +1012,7 @@
     toastEl.textContent = text;
     toastEl.style.opacity = "1";
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { if (toastEl) toastEl.style.opacity = "0"; }, 2200);
+    toastTimer = setTimeout(function () { if (toastEl) toastEl.style.opacity = "0"; }, Math.max(2200, text.length * 60));
   }
 
   // ---- Settings: booking links (shared across the committee) -------------------
@@ -1015,7 +1031,7 @@
           h("div", { class: "t", text: s.url }),
           h("button", { class: "link-danger", type: "button", text: "Remove", style: "margin-top:0.4rem", onclick: function () {
             db.from("booking_slots").delete().eq("id", s.id).then(function (res) {
-              if (res.error) { alert("Couldn't remove: " + res.error.message); return; }
+              if (res.error) { toast("Couldn't remove: " + res.error.message); return; }
               state.settings.bookingSlots = (state.settings.bookingSlots || []).filter(function (x) { return x.id !== s.id; });
               paintList();
             });
@@ -1041,7 +1057,7 @@
         end_time: endInput.value || "",
         url: url,
       }).select().single().then(function (res) {
-        if (res.error) { alert("Couldn't add: " + res.error.message); return; }
+        if (res.error) { toast("Couldn't add: " + res.error.message); return; }
         state.settings.bookingSlots.push(slotFromRow(res.data));
         paintList();
         labelInput.value = ""; urlInput.value = "";
@@ -1095,7 +1111,7 @@
   }
 
   var CSV_COLS = ["name", "email", "phone", "degree", "yearLevel", "role", "roleSecondary", "assignee", "status",
-    "rating", "linkedin", "statement", "resume", "booking", "interviewAt", "createdAt"];
+    "rating", "linkedin", "statement", "experience", "questions", "extraNote", "resume", "booking", "interviewAt", "createdAt"];
 
   function exportCSV() {
     var rows = [CSV_COLS.concat(["attachments", "notes"]).join(",")];
@@ -1121,7 +1137,7 @@
   // Adds rows to the shared board (never replaces). Handy for migrating an old spreadsheet.
   function importCSVPrompt() { pickFile(".csv,text/csv", function (text) {
     var rows = parseCSV(text);
-    if (rows.length < 2) { alert("No data rows found in that CSV."); return; }
+    if (rows.length < 2) { toast("No data rows found in that CSV."); return; }
     var header = rows[0].map(function (c) { return c.trim().toLowerCase(); });
     var records = rows.slice(1).filter(function (r) { return r.join("").trim() !== ""; }).map(function (r) {
       var get = function (name) { var i = header.indexOf(name); return i === -1 ? "" : (r[i] || "").trim(); };
@@ -1138,14 +1154,14 @@
         note: get("notes"),
       };
     }).filter(function (a) { return a.name; });
-    if (!records.length) { alert("Couldn't find any rows with a name. Make sure there's a 'name' column."); return; }
+    if (!records.length) { toast("Couldn't find any rows with a name. Make sure there's a 'name' column."); return; }
     if (!confirm("Import " + records.length + " applicant(s) from CSV? They'll be added to the shared board.")) return;
 
     db.from("applications").insert(records.map(function (r) {
       return { name: r.name, email: r.email, phone: r.phone, role: r.role, assignee: r.assignee,
         resume_url: r.resume, booking: r.booking, status: r.status, rating: r.rating, consent: false };
     })).select("id").then(function (res) {
-      if (res.error) { alert("Import failed: " + res.error.message); return; }
+      if (res.error) { toast("Import failed: " + res.error.message); return; }
       var notes = [];
       res.data.forEach(function (row, i) {
         if (records[i] && records[i].note) notes.push({ application_id: row.id, type: "manual", text: records[i].note });

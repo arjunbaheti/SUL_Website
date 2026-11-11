@@ -68,6 +68,13 @@ create policy "committee manages slots" on public.booking_slots
 -- ---------------------------------------------------------------------------
 -- Applications
 -- ---------------------------------------------------------------------------
+-- If the table already exists, run this once in the SQL editor:
+--   alter table public.applications add column if not exists experience text not null default '';
+--   alter table public.applications add constraint applications_experience_len check (char_length(experience) <= 3000);
+--   alter table public.applications add column if not exists extra_note text not null default '';
+--   alter table public.applications add constraint applications_extra_note_len check (char_length(extra_note) <= 200);
+--   alter table public.applications add column if not exists questions text not null default '';
+--   alter table public.applications add constraint applications_questions_len check (char_length(questions) <= 1000);
 create table if not exists public.applications (
   id              uuid primary key default gen_random_uuid(),
   created_at      timestamptz not null default now(),
@@ -83,6 +90,9 @@ create table if not exists public.applications (
   role_secondary  text not null default '',
   statement       text not null default '',            -- "why do you want to join"
   linkedin        text not null default '',
+  experience      text not null default '',            -- skills and experience they'd bring
+  extra_note      text not null default '',            -- short note or link to go with the optional attachment
+  questions       text not null default '',            -- optional questions from the applicant
   -- [{ path, name, size, mime, kind: 'resume' | 'other' }] -> objects in the "resumes" bucket
   files           jsonb not null default '[]'::jsonb,
   consent         boolean not null default false,
@@ -106,6 +116,9 @@ create table if not exists public.applications (
   constraint applications_role_len     check (char_length(role) <= 120 and char_length(role_secondary) <= 120),
   constraint applications_statement_len check (char_length(statement) <= 3000),
   constraint applications_linkedin_len check (char_length(linkedin) <= 300),
+  constraint applications_experience_len check (char_length(experience) <= 3000),
+  constraint applications_extra_note_len check (char_length(extra_note) <= 200),
+  constraint applications_questions_len check (char_length(questions) <= 1000),
   constraint applications_resume_url_len check (char_length(resume_url) <= 500),
   constraint applications_files_shape  check (jsonb_typeof(files) = 'array' and jsonb_array_length(files) <= 3)
 );
