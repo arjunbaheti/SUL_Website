@@ -69,6 +69,7 @@ create policy "committee manages slots" on public.booking_slots
 -- Applications
 -- ---------------------------------------------------------------------------
 -- If the table already exists, run this once in the SQL editor:
+--   alter table public.applications add constraint applications_answer_words check (coalesce(array_length(regexp_split_to_array(btrim(statement), '\s+'), 1), 0) <= 205 and coalesce(array_length(regexp_split_to_array(btrim(experience), '\s+'), 1), 0) <= 205) not valid;
 --   alter table public.applications add column if not exists experience text not null default '';
 --   alter table public.applications add constraint applications_experience_len check (char_length(experience) <= 3000);
 --   alter table public.applications add column if not exists extra_note text not null default '';
@@ -169,9 +170,13 @@ create table if not exists public.application_notes (
   type           text not null default 'manual',
   text           text not null,
   author_email   text not null default coalesce(auth.jwt() ->> 'email', ''),
-  constraint application_notes_type_chk check (type in ('manual','auto')),
+  -- manual = application note, interview = interview note (unlocked at the interview stage), auto = activity log
+  constraint application_notes_type_chk check (type in ('manual','interview','auto')),
   constraint application_notes_len      check (char_length(text) between 1 and 5000)
 );
+-- EXISTING DATABASE? Run this once to allow interview notes:
+--   alter table public.application_notes drop constraint if exists application_notes_type_chk;
+--   alter table public.application_notes add constraint application_notes_type_chk check (type in ('manual','interview','auto'));
 create index if not exists application_notes_app_idx on public.application_notes (application_id, created_at desc);
 
 alter table public.application_notes enable row level security;

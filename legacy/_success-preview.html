@@ -94,7 +94,7 @@
       <div class="container apply-wrap">
         <div class="form-note" id="apply-unavailable" role="alert" hidden></div>
 
-        <form class="card apply-card" id="apply-form" novalidate>
+        <form class="card apply-card" id="apply-form" novalidate hidden>
           <fieldset class="apply-group">
             <legend><span class="step-text">About you<small>Who we're talking to.</small></span></legend>
             <div class="form-field">
@@ -138,12 +138,12 @@
             <div class="form-field">
               <label for="a-statement">Why are you interested in joining StartUp Link? <span class="req" aria-hidden="true">*</span></label>
               <textarea id="a-statement" name="statement" required rows="6" maxlength="3000"></textarea>
-              <p class="form-hint"><span id="a-statement-count">0</span> / 3000</p>
+              <p class="form-hint" id="a-statement-hint"><span id="a-statement-count">0</span> / 200 words</p>
             </div>
             <div class="form-field">
               <label for="a-experience">What skills and experience could you bring to your role and the broader club? <span class="req" aria-hidden="true">*</span></label>
               <textarea id="a-experience" name="experience" required rows="6" maxlength="3000"></textarea>
-              <p class="form-hint"><span id="a-experience-count">0</span> / 3000</p>
+              <p class="form-hint" id="a-experience-hint"><span id="a-experience-count">0</span> / 200 words</p>
             </div>
             <div class="form-field">
               <label for="a-linkedin">LinkedIn or portfolio link</label>
@@ -191,9 +191,9 @@
           <button class="btn btn-primary btn-block" type="submit" id="apply-submit">Submit application</button>
         </form>
 
-        <div class="card apply-card apply-success" id="apply-success" hidden>
+        <div class="card apply-card apply-success" id="apply-success">
           <h3>Application received</h3>
-          <p>Thanks, <span id="apply-success-name"></span>. Your application and resume are with the committee. We'll reply by email.</p>
+          <p>Thanks, <span id="apply-success-name">Maya</span>. Your application and resume are with the committee. We'll reply by email with next steps shortly.</p>
           <p class="form-hint">Questions? Email <a href="mailto:info@startuplinkunimelb.net">info@startuplinkunimelb.net</a>.</p>
           <a class="btn btn-secondary" href="index.html">Back to home</a>
         </div>
@@ -212,10 +212,5 @@
   </footer>
 
   <script src="assets/js/main.js"></script>
-  <script src="assets/js/config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous"></script>
-  <script>window.SUL_ANON_ONLY = true;</script>
-  <script src="assets/js/supabase-client.js"></script>
-  <script src="assets/js/apply.js"></script>
 </body>
 </html>

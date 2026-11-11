@@ -1,0 +1,27 @@
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "legacy/**",
+    "floorplan/**",
+    ".agents/**",
+    "public/js/**",
+  ]),
+  {
+    // Internal links are plain <a> on purpose: full page loads let public/js/main.js (the original
+    // site's effects script) re-initialise on every page, exactly like the old static site.
+    rules: { "@next/next/no-html-link-for-pages": "off" },
+  },
+]);
+
+export default eslintConfig;
