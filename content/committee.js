@@ -4,14 +4,15 @@
 //
 // To update at handover: add a new object to the TOP of the list with the new
 // term and names, and set current: true on it (set current: false on the one
-// below). Fill "TBD" with real names.
+// below). Fill "TBD" with real names. An office with several holders takes an
+// array of names, shown top to bottom.
 window.SUL_CONTENT = window.SUL_CONTENT || {};
 window.SUL_CONTENT.committee = [
   {
     term: "26-27",
     current: true,
     president: "Sofia Selimi",
-    secretary: "Anya Hoodbhoy",
+    secretary: ["Isabella Sein", "Anya Hoodbhoy"],
     treasurer: "Ethan Rajan",
   },
   {

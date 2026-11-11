@@ -26,6 +26,7 @@
           <li><a href="events.html">What's on</a></li>
           <li><a href="partners.html">Partner with us</a></li>
           <li><a href="committee.html" aria-current="page">Committee</a></li>
+          <li><a href="recruitment.html">Recruitment</a></li>
           <li><a class="nav-cta" href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener">Join now</a></li>
         </ul>
       </nav>
@@ -37,6 +38,7 @@
       <a href="events.html">What's on</a>
       <a href="partners.html">Partner with us</a>
       <a href="committee.html">Committee</a>
+      <a href="recruitment.html">Recruitment</a>
       <a href="https://umsu.unimelb.edu.au/buddy-up/clubs/clubs-listing/join/8055/" target="_blank" rel="noopener"><strong>Join now →</strong></a>
     </div>
   </header>
@@ -80,10 +82,12 @@
       }
 
       function office(role, name) {
+        var names = Array.isArray(name) ? name : [name || "TBD"];
         return SUL.el("div", { class: "office" }, [
           SUL.el("div", { class: "office-role", text: role }),
-          SUL.el("div", { class: "office-name", text: name || "TBD" }),
-        ]);
+        ].concat(names.map(function (n) {
+          return SUL.el("div", { class: "office-name", text: n });
+        })));
       }
 
       committee.forEach(function (term) {
