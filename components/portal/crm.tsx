@@ -60,6 +60,19 @@ export function Crm() {
   const [send, setSend] = useState<{ id: string; kind: SendKind } | null>(null);
   const [dropTarget, setDropTarget] = useState<StageId | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  // A card dropped into another column is re-rendered there, so the browser's "dragend" lands on the
+  // old, removed element and the card's own onDragEnd never runs. Clear the drag state from the
+  // window instead, so a moved card never stays greyed out.
+  useEffect(() => {
+    if (!dragging) return;
+    const clear = () => { setDragging(null); setDropTarget(null); };
+    window.addEventListener("dragend", clear, true);
+    window.addEventListener("drop", clear, true);
+    return () => {
+      window.removeEventListener("dragend", clear, true);
+      window.removeEventListener("drop", clear, true);
+    };
+  }, [dragging]);
   const menuRef = useRef<HTMLDetailsElement>(null);
   const [settings, setSettings] = useState<PortalSettings>(DEFAULT_SETTINGS);
   const [settingsMeta, setSettingsMeta] = useState<SettingsMeta>({ updatedAt: "", updatedBy: "", missingTable: false });
@@ -170,7 +183,8 @@ export function Crm() {
       // A team filter also shows people who picked that team as their second choice.
       if (filters.role && a.role !== filters.role && a.roleSecondary !== filters.role) return false;
       const f = filters.rating;
-      if (f === "needs-my-vote" && a.votes.some((v) => v.reviewer === me)) return false;
+      if (f === "needs-my-vote" && (a.votes.some((v) => v.reviewer === me) || a.conflicts.some((c) => c.reviewer === me))) return false;
+      if (f === "conflicts" && !a.conflicts.length) return false;
       if (f === "no-votes" && a.votes.length) return false;
       if (f === "votes-yes") { const t = voteTally(a.votes); if (!(t.yes > t.no && t.yes >= t.maybe)) return false; }
       if (f === "second-flag" && !a.secondChoiceFlag) return false;
@@ -243,10 +257,11 @@ export function Crm() {
     download("sul-recruitment-" + stamp() + ".json", JSON.stringify({ exportedAt: new Date().toISOString(), applicants }, null, 2), "application/json");
   }
   function exportCSV() {
-    const rows = [[...CSV_COLS, "screeningVotes", "attachments", "notes"].join(",")];
+    const rows = [[...CSV_COLS, "screeningVotes", "conflictsOfInterest", "attachments", "notes"].join(",")];
     for (const a of applicants) {
       const line = CSV_COLS.map((c) => csvCell(a[c]));
       line.push(csvCell(a.votes.map((v) => v.reviewer + ": " + v.vote).join(" | ")));
+      line.push(csvCell(a.conflicts.map((c) => c.reviewer).join(" | ")));
       line.push(csvCell(a.files.map((f) => f.name).join(" | ")));
       line.push(csvCell(a.notes.map((n) => fmtDateTime(n.ts) + " (" + (n.type === "interview" ? "interview" : n.type === "auto" ? "activity" : "application") + (n.author ? ", " + n.author : "") + "): " + n.text).join(" | ")));
       rows.push(line.join(","));
@@ -386,6 +401,7 @@ export function Crm() {
             <option value="needs-my-vote">Needs my vote</option>
             <option value="no-votes">No votes yet</option>
             <option value="votes-yes">Mostly yes votes</option>
+            <option value="conflicts">Conflict of interest declared</option>
           </optgroup>
           <optgroup label="Interview rating">
             {RATINGS.map((r) => <option key={r.id} value={r.id}>Rated: {r.label}</option>)}
@@ -452,7 +468,7 @@ export function Crm() {
                   data-stage={stage.id}
                   onDragOver={(e) => { if (selectMode) return; e.preventDefault(); setDropTarget(stage.id); }}
                   onDragLeave={() => setDropTarget((t) => (t === stage.id ? null : t))}
-                  onDrop={(e) => { e.preventDefault(); setDropTarget(null); moveTo(e.dataTransfer.getData("text/plain"), stage.id); }}
+                  onDrop={(e) => { e.preventDefault(); setDropTarget(null); setDragging(null); moveTo(e.dataTransfer.getData("text/plain"), stage.id); }}
                 >
                   {items.length === 0 ? <div className="crm-col-empty">{selectMode ? "Empty" : "Drop here"}</div> : null}
                   {items.map((a) => {
@@ -492,6 +508,11 @@ export function Crm() {
                           {sent.invite ? <span className="crm-badge sent" title={"Invite emailed " + fmtDateTime(sent.invite)}>✉ Invite {ago(sent.invite)}</span> : null}
                           {sent.offer ? <span className="crm-badge sent" title={"Offer emailed " + fmtDateTime(sent.offer)}>✉ Offer {ago(sent.offer)}</span> : null}
                           {sent.reject ? <span className="crm-badge sent" title={"Rejection emailed " + fmtDateTime(sent.reject)}>✉ Rejection {ago(sent.reject)}</span> : null}
+                          {a.conflicts.length ? (
+                            <span className="crm-badge coi" title={"Knows this applicant (vote not counted):\n" + a.conflicts.map((c) => c.reviewer).join("\n")}>
+                              ⚠ Conflict{a.conflicts.length > 1 ? " ×" + a.conflicts.length : ""}
+                            </span>
+                          ) : null}
                           {dupes ? <span className="crm-badge dup" title="Another application uses this email">Duplicate</span> : null}
                         </div>
                         <div className="cmeta">

@@ -6,7 +6,6 @@ export const metadata: Metadata = {
   title: { default: "StartUp Link UniMelb | Your route into the startup world", template: "%s | StartUp Link UniMelb" },
   description:
     "StartUp Link UniMelb connects University of Melbourne students to startup jobs, skills, and a national founder/operator community.",
-  icons: { icon: "/img/logo.png" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

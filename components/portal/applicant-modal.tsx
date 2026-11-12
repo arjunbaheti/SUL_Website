@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import {
   RATINGS, STAGES, STAGE_BY_ID, fmtDate, fmtDateTime, fmtSize, interviewUnlocked, noteFromRow, voteTally,
-  withScheme, type Applicant, type Note, type RatingId, type StageId, type Vote,
+  withScheme, type Applicant, type Note, type Conflict, type RatingId, type StageId, type Vote,
 } from "@/lib/portal";
 import { FileViewer } from "./file-viewer";
 import { Modal, toast } from "./ui";
@@ -28,21 +28,30 @@ function changes(orig: Applicant, draft: Applicant) {
 
 const VOTE_LABEL: Record<Vote["vote"], string> = { yes: "👍 Yes", maybe: "🤔 Maybe", no: "👎 No" };
 
-/** Each reviewer's screening vote: decides who gets an interview. Saves the moment you click. */
+type MyVote = Vote["vote"] | "conflict" | "";
+
+/** Each reviewer's screening vote: decides who gets an interview. Saves the moment you click.
+ *  A reviewer who knows the applicant can declare a conflict instead: that replaces their vote,
+ *  doesn't count towards the tally, and is shown to everyone. */
 function Screening({ a, me }: { a: Applicant; me: string }) {
-  const mine0 = a.votes.find((v) => v.reviewer === me)?.vote ?? "";
-  const [mine, setMine] = useState<Vote["vote"] | "">(mine0);
+  const mine0: MyVote = a.conflicts.some((c) => c.reviewer === me) ? "conflict" : a.votes.find((v) => v.reviewer === me)?.vote ?? "";
+  const [mine, setMine] = useState<MyVote>(mine0);
   const [saving, setSaving] = useState(false);
+  const now = new Date().toISOString();
   const votes: Vote[] = [
     ...a.votes.filter((v) => v.reviewer !== me),
-    ...(mine ? [{ reviewer: me, vote: mine, updatedAt: new Date().toISOString() }] : []),
+    ...(mine && mine !== "conflict" ? [{ reviewer: me, vote: mine, updatedAt: now }] : []),
+  ];
+  const conflicts: Conflict[] = [
+    ...a.conflicts.filter((c) => c.reviewer !== me),
+    ...(mine === "conflict" ? [{ reviewer: me, updatedAt: now }] : []),
   ];
   const t = voteTally(votes);
+  const iConflict = mine === "conflict";
 
-  async function cast(v: Vote["vote"] | "") {
+  async function save(next: MyVote) {
     if (!me || saving) return;
     const prev = mine;
-    const next = v === mine ? "" : v; // clicking your current vote clears it
     setMine(next);
     setSaving(true);
     const db = portalClient().from("application_votes");
@@ -50,7 +59,16 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
       ? await db.upsert({ application_id: a.id, reviewer_email: me, vote: next }, { onConflict: "application_id,reviewer_email" })
       : await db.delete().eq("application_id", a.id).eq("reviewer_email", me);
     setSaving(false);
-    if (error) { setMine(prev); toast("Couldn't save your vote: " + error.message); }
+    if (!error) return;
+    setMine(prev);
+    toast(next === "conflict" && /vote_chk|check constraint/i.test(error.message)
+      ? "Conflict of interest needs the latest database update (supabase/migrations/2026-11-12c-conflicts.sql)."
+      : "Couldn't save: " + error.message);
+  }
+
+  function toggleConflict(on: boolean) {
+    if (on && hasVote(mine) && !window.confirm("Declaring a conflict removes your " + mine + " vote. Continue?")) return;
+    save(on ? "conflict" : "");
   }
 
   return (
@@ -58,7 +76,13 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
       <label>Screening vote · should they get an interview?</label>
       <div className="rating-btns">
         {(["yes", "maybe", "no"] as const).map((v) => (
-          <button key={v} type="button" data-r={v} aria-pressed={mine === v} disabled={saving} onClick={() => cast(v)}>{VOTE_LABEL[v]}</button>
+          <button
+            key={v} type="button" data-r={v} aria-pressed={mine === v} disabled={saving || iConflict}
+            title={iConflict ? "You've declared a conflict of interest, so you can't vote" : undefined}
+            onClick={() => save(v === mine ? "" : v)} // clicking your current vote clears it
+          >
+            {VOTE_LABEL[v]}
+          </button>
         ))}
       </div>
       <div className="crm-votes">
@@ -73,9 +97,22 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
           </>
         )}
       </div>
+      {conflicts.length ? (
+        <div className="crm-coi-list" role="note">
+          ⚠ Conflict of interest declared by{" "}
+          {conflicts.map((c) => (c.reviewer === me ? "you" : c.reviewer)).join(", ")}.
+          {" "}{conflicts.length === 1 ? "That vote isn" : "Those votes aren"}&apos;t counted. Consider leaving the decision and the interview to someone else.
+        </div>
+      ) : null}
+      <label className="crm-coi">
+        <input type="checkbox" checked={iConflict} disabled={saving || !me} onChange={(e) => toggleConflict(e.target.checked)} />
+        <span><strong>I know this person</strong> (friend, partner, housemate, family…). Declares a conflict of interest: your vote is removed and the rest of the committee can see it.</span>
+      </label>
     </div>
   );
 }
+
+const hasVote = (m: MyVote) => m === "yes" || m === "maybe" || m === "no";
 
 /** Read-only block showing what the applicant submitted on the public form. */
 function Submission({ a }: { a: Applicant }) {

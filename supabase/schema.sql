@@ -192,7 +192,8 @@ create policy "committee manages notes" on public.application_notes
   for all to authenticated using (public.is_committee()) with check (public.is_committee());
 
 -- ---------------------------------------------------------------------------
--- Screening votes: one Yes/Maybe/No per reviewer per applicant (decides who gets an interview)
+-- Screening votes: one Yes/Maybe/No per reviewer per applicant (decides who gets an interview).
+-- 'conflict' means the reviewer knows the applicant: it replaces their vote and isn't counted.
 -- ---------------------------------------------------------------------------
 create table if not exists public.application_votes (
   application_id uuid not null references public.applications(id) on delete cascade,
@@ -200,8 +201,11 @@ create table if not exists public.application_votes (
   vote           text not null,
   updated_at     timestamptz not null default now(),
   primary key (application_id, reviewer_email),
-  constraint application_votes_vote_chk check (vote in ('yes','maybe','no'))
+  constraint application_votes_vote_chk check (vote in ('yes','maybe','no','conflict'))
 );
+-- Existing databases: widen the check to allow 'conflict'.
+alter table public.application_votes drop constraint if exists application_votes_vote_chk;
+alter table public.application_votes add constraint application_votes_vote_chk check (vote in ('yes','maybe','no','conflict'));
 drop trigger if exists application_votes_touch on public.application_votes;
 create trigger application_votes_touch before update on public.application_votes
   for each row execute function public.touch_updated_at();

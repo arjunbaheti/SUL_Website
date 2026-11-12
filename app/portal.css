@@ -502,6 +502,11 @@
 .crm-badge.sent { color: #9fd8e4; border-color: rgba(197, 228, 236, 0.3); }
 .crm-badge.dup { color: #f0d9a8; border-color: rgba(217, 164, 65, 0.45); }
 .crm-badge.votes { color: var(--sul-ink); }
+.crm-badge.coi { color: #ffb3a1; border-color: rgba(224, 120, 96, 0.5); }
+.crm-coi { display: flex; align-items: flex-start; gap: 0.5rem; margin-top: 0.6rem; font-size: 0.82rem; color: var(--sul-muted); cursor: pointer; }
+.crm-coi input { margin-top: 0.15rem; }
+.crm-coi strong { color: var(--sul-ink); font-weight: 600; }
+.crm-coi-list { margin-top: 0.55rem; padding: 0.45rem 0.65rem; border-radius: 8px; border: 1px solid rgba(224, 120, 96, 0.45); background: rgba(224, 120, 96, 0.08); color: #ffd2c6; font-size: 0.8rem; }
 .crm-tag { font-size: 0.66rem; padding: 0.02rem 0.35rem; border-radius: 5px; background: var(--sul-primary-soft); color: var(--sul-primary); margin-left: 0.2rem; }
 
 /* Selection mode */

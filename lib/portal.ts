@@ -25,6 +25,9 @@ export type AppFile = { path: string; name?: string; size?: number; mime?: strin
 export type Note = { id?: string; ts: string; text: string; type: "auto" | "manual" | "interview"; author: string };
 /** One reviewer's screening vote (before interviews). One per reviewer per applicant. */
 export type Vote = { reviewer: string; vote: Exclude<RatingId, "">; updatedAt: string };
+/** A reviewer who knows this applicant personally. Stored as a "conflict" row in application_votes,
+ *  so it replaces that reviewer's vote and never counts towards the tally. */
+export type Conflict = { reviewer: string; updatedAt: string };
 
 export type Applicant = {
   id: string;
@@ -37,6 +40,7 @@ export type Applicant = {
   secondChoiceFlag: boolean; // flagged as worth considering for their second-choice team
   notes: Note[];
   votes: Vote[];
+  conflicts: Conflict[];
   createdAt: string; updatedAt: string;
 };
 
@@ -61,6 +65,9 @@ export function applicantFromRow(r: any): Applicant {
     votes: (r.application_votes || [])
       .filter((v: any) => v.vote === "yes" || v.vote === "maybe" || v.vote === "no")
       .map((v: any) => ({ reviewer: v.reviewer_email || "", vote: v.vote, updatedAt: v.updated_at || "" })),
+    conflicts: (r.application_votes || [])
+      .filter((v: any) => v.vote === "conflict")
+      .map((v: any) => ({ reviewer: v.reviewer_email || "", updatedAt: v.updated_at || "" })),
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
