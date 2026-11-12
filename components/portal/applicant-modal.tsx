@@ -3,54 +3,83 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import {
-  RATINGS, STAGES, STAGE_BY_ID, fmtDateTime, fmtSize, interviewUnlocked, noteFromRow,
-  withScheme, type Applicant, type Note, type RatingId, type StageId,
+  RATINGS, STAGES, STAGE_BY_ID, fmtDate, fmtDateTime, fmtSize, interviewUnlocked, noteFromRow, voteTally,
+  withScheme, type Applicant, type Note, type RatingId, type StageId, type Vote,
 } from "@/lib/portal";
+import { FileViewer } from "./file-viewer";
 import { Modal, toast } from "./ui";
 
 // Fields the committee can edit -> database column. Only changed fields are sent, so two
 // reviewers editing different fields don't clobber each other.
 const EDITABLE = {
-  name: "name", email: "email", phone: "phone", role: "role",
-  booking: "booking", status: "status", rating: "rating",
+  booking: "booking", status: "status", rating: "rating", secondChoiceFlag: "second_choice_flag",
 } as const;
 type Editable = keyof typeof EDITABLE;
 
 function changes(orig: Applicant, draft: Applicant) {
-  const out: Record<string, string | null> = {};
+  const out: Record<string, string | boolean> = {};
   (Object.keys(EDITABLE) as Editable[]).forEach((k) => {
-    if ((orig[k] || "") !== (draft[k] || "")) out[EDITABLE[k]] = draft[k] || "";
+    const o = orig[k], d = draft[k];
+    if (typeof d === "boolean") { if (!!o !== d) out[EDITABLE[k]] = d; }
+    else if ((o || "") !== (d || "")) out[EDITABLE[k]] = d || "";
   });
   return out;
 }
 
-/** Gets a short-lived signed link for a stored file. Returns the URL, or an error message. */
-async function signFile(path: string): Promise<{ url: string } | { error: string }> {
-  try {
-    const res = await portalClient().storage.from("resumes").createSignedUrl(path, 300);
-    if (res.error || !res.data) return { error: res.error?.message || "not found" };
-    return { url: res.data.signedUrl };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "network error" };
+const VOTE_LABEL: Record<Vote["vote"], string> = { yes: "👍 Yes", maybe: "🤔 Maybe", no: "👎 No" };
+
+/** Each reviewer's screening vote: decides who gets an interview. Saves the moment you click. */
+function Screening({ a, me }: { a: Applicant; me: string }) {
+  const mine0 = a.votes.find((v) => v.reviewer === me)?.vote ?? "";
+  const [mine, setMine] = useState<Vote["vote"] | "">(mine0);
+  const [saving, setSaving] = useState(false);
+  const votes: Vote[] = [
+    ...a.votes.filter((v) => v.reviewer !== me),
+    ...(mine ? [{ reviewer: me, vote: mine, updatedAt: new Date().toISOString() }] : []),
+  ];
+  const t = voteTally(votes);
+
+  async function cast(v: Vote["vote"] | "") {
+    if (!me || saving) return;
+    const prev = mine;
+    const next = v === mine ? "" : v; // clicking your current vote clears it
+    setMine(next);
+    setSaving(true);
+    const db = portalClient().from("application_votes");
+    const { error } = next
+      ? await db.upsert({ application_id: a.id, reviewer_email: me, vote: next }, { onConflict: "application_id,reviewer_email" })
+      : await db.delete().eq("application_id", a.id).eq("reviewer_email", me);
+    setSaving(false);
+    if (error) { setMine(prev); toast("Couldn't save your vote: " + error.message); }
   }
+
+  return (
+    <div className="crm-field">
+      <label>Screening vote · should they get an interview?</label>
+      <div className="rating-btns">
+        {(["yes", "maybe", "no"] as const).map((v) => (
+          <button key={v} type="button" data-r={v} aria-pressed={mine === v} disabled={saving} onClick={() => cast(v)}>{VOTE_LABEL[v]}</button>
+        ))}
+      </div>
+      <div className="crm-votes">
+        {votes.length === 0 ? <span className="crm-help" style={{ margin: 0 }}>No votes yet. Each reviewer gets one vote; click yours again to clear it.</span> : (
+          <>
+            <span className="crm-vote-tally">{t.yes} yes · {t.maybe} maybe · {t.no} no</span>
+            {votes.map((v) => (
+              <span key={v.reviewer} className={"crm-vote-chip " + v.vote} title={v.updatedAt ? "Voted " + fmtDate(v.updatedAt) : undefined}>
+                {VOTE_LABEL[v.vote].split(" ")[0]} {v.reviewer === me ? "You" : v.reviewer}
+              </span>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** Read-only block showing what the applicant submitted on the public form. */
 function Submission({ a }: { a: Applicant }) {
-  const [fileMsg, setFileMsg] = useState<{ text: string; url?: string } | null>(null);
-  async function openFile(path: string) {
-    setFileMsg({ text: "Opening…" });
-    const res = await signFile(path);
-    if ("error" in res) {
-      setFileMsg({ text: "Couldn't open that file: " + res.error });
-      return;
-    }
-    // Signed first, then opened, so a failure never leaves a blank tab behind.
-    // (Not the "noopener" feature: it makes window.open return null, which looks like a blocked tab.)
-    const win = window.open(res.url, "_blank");
-    if (win) win.opener = null;
-    setFileMsg(win ? null : { text: "Your browser blocked the new tab.", url: res.url });
-  }
+  const [viewing, setViewing] = useState<string | null>(null);
   const rows: [string, React.ReactNode][] = [];
   if (a.degree) rows.push(["Degree", a.degree]);
   if (a.yearLevel) rows.push(["Expected graduation", a.yearLevel]);
@@ -64,17 +93,13 @@ function Submission({ a }: { a: Applicant }) {
     rows.push(["Files", (
       <div className="crm-files" key="f">
         {a.files.map((f) => (
-          <button key={f.path} type="button" className="crm-file" onClick={() => openFile(f.path)}>
+          <button key={f.path} type="button" className="crm-file" onClick={() => setViewing(f.path)}>
             <span className="fi">{f.kind === "resume" ? "📄 Resume" : "📎 Attachment"}</span>
             <span className="fn">{f.name || "file"}</span>
             <span className="fs">{fmtSize(f.size)}</span>
           </button>
         ))}
-        {fileMsg ? (
-          <p className="form-hint" role="status" style={{ color: fileMsg.text.startsWith("Couldn") ? "#ff8a8a" : undefined, margin: "0.3rem 0 0", overflowWrap: "anywhere" }}>
-            {fileMsg.text}{fileMsg.url ? <> <a href={fileMsg.url} target="_blank" rel="noopener noreferrer">Open file</a></> : null}
-          </p>
-        ) : null}
+        {viewing ? <FileViewer files={a.files} startPath={viewing} applicantName={a.name || "Applicant"} onClose={() => setViewing(null)} /> : null}
       </div>
     )]);
   }
@@ -126,12 +151,12 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
   );
 }
 
-export function ApplicantModal({ a, onClose, onSaved, onSendInvite }: {
-  a: Applicant; onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void;
+export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, onClose, onSaved, onSendInvite, onOpenOther }: {
+  a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean;
+  onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void; onOpenOther: (id: string) => void;
 }) {
   const [d, setD] = useState<Applicant>(a);
   const [extra, setExtra] = useState<Note[]>([]); // notes added in this session (until the board reloads)
-  const [me, setMe] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const up = <K extends keyof Applicant>(k: K, v: Applicant[K]) => setD((p) => ({ ...p, [k]: v }));
 
@@ -155,7 +180,7 @@ export function ApplicantModal({ a, onClose, onSaved, onSendInvite }: {
         toast("Couldn't save: " + (error ? error.message : "you may not have permission, or the applicant was deleted."));
         return;
       }
-      base.current = { ...base.current, booking: draft.booking, status: draft.status, rating: draft.rating };
+      base.current = { ...base.current, booking: draft.booking, status: draft.status, rating: draft.rating, secondChoiceFlag: draft.secondChoiceFlag };
       dirtySaved.current = true;
       if (patch.status) {
         const r = await db.from("application_notes")
@@ -182,11 +207,6 @@ export function ApplicantModal({ a, onClose, onSaved, onSendInvite }: {
     if (dirtySaved.current) await onSaved();
   }, [saveNow, onClose, onSaved]);
 
-  // Who is signed in.
-  useEffect(() => {
-    portalClient().auth.getSession().then(({ data }) => setMe(data.session?.user.email ?? ""));
-  }, []);
-
   const allNotes = [...extra, ...a.notes.filter((n) => !extra.some((x) => x.id && x.id === n.id))];
   const appNotes = allNotes.filter((n) => n.type === "manual");
   const interviewNotes = allNotes.filter((n) => n.type === "interview");
@@ -202,11 +222,14 @@ export function ApplicantModal({ a, onClose, onSaved, onSendInvite }: {
     dirtySaved.current = true;
   }
 
-  // Rating an interview moves the applicant on: Yes or Maybe -> Offer, No -> Rejected.
+  // Rating an interview moves the applicant on (unless turned off in Settings):
+  // Yes -> Offer, Maybe -> Waitlist, No -> Rejected.
   function setRating(r: RatingId) {
     setD((p) => {
       const next = { ...p, rating: r };
-      if (r && ["booked", "interviewed", "offer", "rejected"].includes(p.status)) next.status = r === "no" ? "rejected" : "offer";
+      if (ratingMovesStage && r && ["booked", "interviewed", "waitlist", "offer", "rejected"].includes(p.status)) {
+        next.status = r === "yes" ? "offer" : r === "maybe" ? "waitlist" : "rejected";
+      }
       return next;
     });
   }
@@ -252,7 +275,27 @@ export function ApplicantModal({ a, onClose, onSaved, onSendInvite }: {
         </>
       }
     >
+      {duplicates.length ? (
+        <div className="crm-settings-warn" role="alert">
+          <strong>Possible duplicate.</strong> {duplicates.length === 1 ? "Another application uses" : duplicates.length + " other applications use"} this email:{" "}
+          {duplicates.map((o, i) => (
+            <span key={o.id}>
+              {i ? ", " : ""}
+              <button type="button" className="crm-linkbtn" onClick={async () => { await saveNow(); if (dirtySaved.current) await onSaved(); onOpenOther(o.id); }}>
+                {o.role || "no team"} · {fmtDate(o.createdAt)} · {STAGE_BY_ID[o.status].label}
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
       <Submission a={a} />
+      <Screening key={me} a={a} me={me} />
+      {a.roleSecondary ? (
+        <label className="crm-check" style={{ marginTop: "-0.3rem", marginBottom: "0.9rem" }}>
+          <input type="checkbox" checked={d.secondChoiceFlag} onChange={(e) => up("secondChoiceFlag", e.target.checked)} />
+          ⭐ Worth considering for their 2nd choice ({a.roleSecondary})
+        </label>
+      ) : null}
       <div className="crm-row">
         <div className="crm-field"><label>Full name</label><input id="ap-name" readOnly value={a.name} /></div>
         <div className="crm-field"><label>Email</label><input type="email" readOnly value={a.email} /></div>

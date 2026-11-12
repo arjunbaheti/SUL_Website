@@ -2,45 +2,53 @@
 
 import { useState } from "react";
 import { portalClient } from "@/lib/supabase";
-import {
-  SEND_META, emailSubject, inviteMessage, offerMessage, rejectionMessage,
-  type Applicant, type SendKind,
-} from "@/lib/portal";
+import { SEND_META, ago, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
+import { fillTemplate, type PortalSettings } from "@/lib/settings";
 import { Modal, copyText, toast } from "./ui";
 
 /** The endpoint requires a committee session, so we pass the reviewer's access token. */
-async function sendEmail(to: string, subject: string, text: string) {
+export async function sendEmail(to: string, subject: string, text: string, settings: PortalSettings): Promise<string | null> {
   try {
     const { data } = await portalClient().auth.getSession();
     const res = await fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + (data.session?.access_token ?? "") },
-      body: JSON.stringify({ to, subject, text }),
+      body: JSON.stringify({ to, subject, text, fromName: settings.senderName, replyTo: settings.replyTo }),
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-    if (!res.ok || !body.ok) {
-      toast("Couldn't send: " + (body.error || "HTTP " + res.status));
-      return false;
-    }
-    return true;
+    if (!res.ok || !body.ok) return body.error || "HTTP " + res.status;
+    return null;
   } catch (err) {
-    toast("Couldn't send. Check your connection. (" + (err as Error)?.message + ")");
-    return false;
+    return "Check your connection. (" + (err as Error)?.message + ")";
   }
 }
 
-export function SendModal({ a, kind, onClose, onSent }: {
-  a: Applicant; kind: SendKind; onClose: () => void; onSent: (a: Applicant, kind: SendKind) => Promise<void>;
+export function draftFor(a: Applicant, kind: SendKind, settings: PortalSettings) {
+  const tpl = settings.templates[kind];
+  return { subject: fillTemplate(tpl.subject, a, a.booking), body: fillTemplate(tpl.body, a, a.booking) };
+}
+
+export function SendModal({ a, kind: initialKind, settings, onClose, onSent }: {
+  a: Applicant; kind: SendKind; settings: PortalSettings; onClose: () => void; onSent: (a: Applicant, kind: SendKind) => Promise<void>;
 }) {
-  const [subject, setSubject] = useState(emailSubject(kind, a.role));
-  const [body, setBody] = useState(
-    kind === "invite" ? inviteMessage(a, a.booking.trim()) : kind === "offer" ? offerMessage(a) : rejectionMessage(a),
-  );
+  const [kind, setKind] = useState<SendKind>(initialKind);
+  const [subject, setSubject] = useState(() => draftFor(a, initialKind, settings).subject);
+  const [body, setBody] = useState(() => draftFor(a, initialKind, settings).body);
   const [busy, setBusy] = useState(false);
+  const isRejection = kind === "reject" || kind === "rejectScreen";
+  const alreadySent = sentEmails(a)[sentGroup(kind)];
+
+  function switchKind(k: SendKind) {
+    if (k === kind) return;
+    const d = draftFor(a, k, settings);
+    setKind(k); setSubject(d.subject); setBody(d.body);
+  }
 
   async function send() {
+    if (alreadySent && !window.confirm(`${a.name || "This applicant"} was already sent this email ${ago(alreadySent)}. Send it again?`)) return;
     setBusy(true);
-    if (!(await sendEmail(a.email, subject, body))) { setBusy(false); return; }
+    const err = await sendEmail(a.email, subject, body, settings);
+    if (err) { toast("Couldn't send: " + err); setBusy(false); return; }
     await onSent(a, kind);
     toast(SEND_META[kind].logged);
     onClose();
@@ -59,6 +67,17 @@ export function SendModal({ a, kind, onClose, onSent }: {
         </>
       }
     >
+      {alreadySent ? (
+        <p className="crm-settings-warn" role="alert">Already sent {ago(alreadySent)}. Sending again will email them a second time.</p>
+      ) : null}
+      {isRejection ? (
+        <div className="crm-seg" role="group" aria-label="Which rejection">
+          {(["rejectScreen", "reject"] as SendKind[]).map((k) => (
+            <button key={k} type="button" aria-pressed={kind === k} onClick={() => switchKind(k)}>{SEND_META[k].label}</button>
+          ))}
+        </div>
+      ) : null}
+      <div className="crm-field"><label>From</label><input type="text" value={settings.senderName + (settings.replyTo ? " (replies to " + settings.replyTo + ")" : "")} disabled /></div>
       <div className="crm-field"><label>To</label><input type="email" value={a.email} disabled /></div>
       <div className="crm-field"><label>Subject</label><input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
       <div className="crm-field"><label>Message</label><textarea style={{ minHeight: 220 }} value={body} onChange={(e) => setBody(e.target.value)} /></div>

@@ -150,6 +150,14 @@ export function ApplyForm() {
         consent: true,
       });
       if (error) throw new Error(error.message);
+      // Ask the server to email a "we've received your application" confirmation. Fire and
+      // forget: the application is already saved, so a failed email never shows as an error.
+      fetch("/api/application-received", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+        keepalive: true,
+      }).catch(() => {});
       done(firstName());
     } catch (err) {
       console.error(err);
