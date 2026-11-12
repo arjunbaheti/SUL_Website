@@ -5,7 +5,7 @@
 // "Authorization: Bearer <token>", and we ask the database (is_committee(), see
 // supabase/schema.sql) whether that token belongs to someone on the allowlist. Without this,
 // anyone on the internet could send mail from the club's address.
-import nodemailer from "nodemailer";
+import { cleanFromName, cleanReplyTo, missingMailEnv, sendClubMail } from "@/lib/mailer";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase-config";
 
 type Check = { ok: true } | { ok: false; status: number; error: string };
@@ -37,23 +37,28 @@ export async function POST(request: Request) {
   const check = await isCommittee(auth.startsWith("Bearer ") ? auth.slice(7).trim() : "");
   if (!check.ok) return Response.json({ ok: false, error: check.error }, { status: check.status });
 
-  const body = (await request.json().catch(() => ({}))) as { to?: string; subject?: string; text?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    to?: string; subject?: string; text?: string; fromName?: string; replyTo?: string;
+  };
   const to = (body.to || "").trim();
   const subject = (body.subject || "").trim();
   const text = (body.text || "").trim();
   if (!to || !subject || !text) {
     return Response.json({ ok: false, error: "Missing to, subject, or text" }, { status: 400 });
   }
+  // Display name and reply-to come from portal Settings; the sending account is always GMAIL_USER.
+  const replyTo = cleanReplyTo(body.replyTo);
+  if (replyTo === null) {
+    return Response.json({ ok: false, error: "The reply-to address in Settings isn't a valid email." }, { status: 400 });
+  }
 
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) {
-    const missing = [!user && "GMAIL_USER", !pass && "GMAIL_APP_PASSWORD"].filter(Boolean).join(", ");
+  const missing = missingMailEnv();
+  if (missing.length) {
     return Response.json(
       {
         ok: false,
         error:
-          `Missing env var(s) on the server: ${missing}. In Vercel: Project Settings -> Environment Variables -> ` +
+          `Missing env var(s) on the server: ${missing.join(", ")}. In Vercel: Project Settings -> Environment Variables -> ` +
           "make sure both are added with the Production box checked, then redeploy.",
       },
       { status: 500 },
@@ -61,18 +66,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
-    const domain = user.split("@")[1] || "startuplinkunimelb.net";
-    await transporter.sendMail({
-      from: `"StartUp Link UniMelb" <${user}>`,
-      replyTo: user,
-      to,
-      subject,
-      text,
-      // Nodemailer defaults this to the container's hostname, which doesn't match the sending
-      // domain and reads as a spam signal.
-      messageId: `<${Date.now()}.${Math.random().toString(36).slice(2)}@${domain}>`,
-    });
+    await sendClubMail({ to, subject, text, fromName: cleanFromName(body.fromName), replyTo });
     return Response.json({ ok: true });
   } catch (err) {
     return Response.json({ ok: false, error: (err as Error)?.message || "Send failed" }, { status: 500 });

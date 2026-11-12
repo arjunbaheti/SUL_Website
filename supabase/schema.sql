@@ -69,6 +69,10 @@ create policy "committee manages slots" on public.booking_slots
 -- Applications
 -- ---------------------------------------------------------------------------
 -- If the table already exists, run this once in the SQL editor:
+--   alter table public.applications drop constraint if exists applications_status_chk;
+--   alter table public.applications add constraint applications_status_chk check (status in ('applied','review','invited','booked','interviewed','waitlist','offer','rejected'));
+--   alter table public.applications add column if not exists second_choice_flag boolean not null default false;
+--   (then re-run the "public can apply" policy below, and the "Screening votes" section)
 --   alter table public.applications add constraint applications_answer_words check (coalesce(array_length(regexp_split_to_array(btrim(statement), '\s+'), 1), 0) <= 205 and coalesce(array_length(regexp_split_to_array(btrim(experience), '\s+'), 1), 0) <= 205) not valid;
 --   alter table public.applications add column if not exists experience text not null default '';
 --   alter table public.applications add constraint applications_experience_len check (char_length(experience) <= 3000);
@@ -106,8 +110,10 @@ create table if not exists public.applications (
   booking_slot_id uuid references public.booking_slots(id) on delete set null,
   resume_url      text not null default '',            -- legacy/imported link; new applicants use files
   interview_at    timestamptz,
+  second_choice_flag boolean not null default false, -- worth considering for their 2nd-choice team
+  confirmation_sent_at timestamptz,                   -- when the "application received" email went out
 
-  constraint applications_status_chk   check (status in ('applied','review','invited','booked','interviewed','offer','rejected')),
+  constraint applications_status_chk   check (status in ('applied','review','invited','booked','interviewed','waitlist','offer','rejected')),
   constraint applications_rating_chk   check (rating in ('','yes','maybe','no')),
   constraint applications_name_len     check (char_length(name) between 1 and 120),
   constraint applications_email_len    check (char_length(email) <= 254 and (email = '' or email like '%_@_%')),
@@ -147,6 +153,7 @@ create policy "public can apply" on public.applications
   with check (
     status = 'applied' and rating = '' and assignee = '' and booking = ''
     and booking_slot_id is null and interview_at is null and resume_url = ''
+    and second_choice_flag = false and confirmation_sent_at is null
     and consent = true
     and char_length(name) > 0 and char_length(email) > 0
   );
@@ -185,6 +192,40 @@ create policy "committee manages notes" on public.application_notes
   for all to authenticated using (public.is_committee()) with check (public.is_committee());
 
 -- ---------------------------------------------------------------------------
+-- Screening votes: one Yes/Maybe/No per reviewer per applicant (decides who gets an interview)
+-- ---------------------------------------------------------------------------
+create table if not exists public.application_votes (
+  application_id uuid not null references public.applications(id) on delete cascade,
+  reviewer_email text not null default lower(coalesce(auth.jwt() ->> 'email', '')),
+  vote           text not null,
+  updated_at     timestamptz not null default now(),
+  primary key (application_id, reviewer_email),
+  constraint application_votes_vote_chk check (vote in ('yes','maybe','no'))
+);
+drop trigger if exists application_votes_touch on public.application_votes;
+create trigger application_votes_touch before update on public.application_votes
+  for each row execute function public.touch_updated_at();
+
+alter table public.application_votes enable row level security;
+-- Every reviewer can see all votes, but can only cast, change or remove their own.
+drop policy if exists "committee reads votes"  on public.application_votes;
+drop policy if exists "reviewer casts vote"    on public.application_votes;
+drop policy if exists "reviewer changes vote"  on public.application_votes;
+drop policy if exists "reviewer removes vote"  on public.application_votes;
+create policy "committee reads votes" on public.application_votes
+  for select to authenticated using (public.is_committee());
+create policy "reviewer casts vote" on public.application_votes
+  for insert to authenticated
+  with check (public.is_committee() and reviewer_email = lower(coalesce(auth.jwt() ->> 'email', '')));
+create policy "reviewer changes vote" on public.application_votes
+  for update to authenticated
+  using (public.is_committee() and reviewer_email = lower(coalesce(auth.jwt() ->> 'email', '')))
+  with check (public.is_committee() and reviewer_email = lower(coalesce(auth.jwt() ->> 'email', '')));
+create policy "reviewer removes vote" on public.application_votes
+  for delete to authenticated
+  using (public.is_committee() and reviewer_email = lower(coalesce(auth.jwt() ->> 'email', '')));
+
+-- ---------------------------------------------------------------------------
 -- Resume / attachment storage (PRIVATE bucket, 3 MB per file, documents + images only)
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -217,6 +258,91 @@ create policy "committee reads resumes"   on storage.objects for select to authe
 create policy "committee deletes resumes" on storage.objects for delete to authenticated using (bucket_id = 'resumes' and public.is_committee());
 
 -- ---------------------------------------------------------------------------
+-- Portal settings (email templates, sender name, board behaviour) — one shared row, id 'main'
+-- EXISTING DATABASE? Run from here down to "Live updates" once to add it.
+-- ---------------------------------------------------------------------------
+create table if not exists public.portal_settings (
+  id          text primary key default 'main',
+  data        jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now(),
+  updated_by  text not null default coalesce(auth.jwt() ->> 'email', ''),
+  constraint portal_settings_single check (id = 'main'),
+  constraint portal_settings_shape  check (jsonb_typeof(data) = 'object' and pg_column_size(data) <= 65536)
+);
+
+create or replace function public.touch_portal_settings()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  new.updated_by = coalesce(auth.jwt() ->> 'email', '');
+  return new;
+end;
+$$;
+drop trigger if exists portal_settings_touch on public.portal_settings;
+create trigger portal_settings_touch before insert or update on public.portal_settings
+  for each row execute function public.touch_portal_settings();
+
+alter table public.portal_settings enable row level security;
+drop policy if exists "committee manages settings" on public.portal_settings;
+create policy "committee manages settings" on public.portal_settings
+  for all to authenticated using (public.is_committee()) with check (public.is_committee());
+
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    begin alter publication supabase_realtime add table public.portal_settings; exception when duplicate_object then null; end;
+  end if;
+end $$;
+
+-- "Application received" email (app/api/application-received). Called anonymously by the
+-- server straight after someone applies. Marks the application as confirmed and returns who
+-- to email plus the saved settings, but only when an email is genuinely due:
+--   * this application hasn't been confirmed yet and was created in the last 15 minutes
+--   * the same email address hasn't had a confirmation in the last day
+--   * fewer than 250 confirmations have gone out in the last day (protects the Gmail quota)
+--   * confirmations aren't switched off in portal Settings
+-- Returns no rows otherwise. Exposes nothing else to the public.
+create or replace function public.claim_application_confirmation(app_id uuid)
+returns table (name text, email text, role text, settings jsonb)
+language plpgsql
+security definer
+set search_path = public
+as $$
+#variable_conflict use_column
+declare
+  s jsonb;
+  r record;
+begin
+  select coalesce(ps.data, '{}'::jsonb) into s from public.portal_settings ps where ps.id = 'main';
+  s := coalesce(s, '{}'::jsonb);
+  if jsonb_typeof(s -> 'confirmationEnabled') = 'boolean' and (s ->> 'confirmationEnabled')::boolean = false then
+    return;
+  end if;
+  if (select count(*) from public.applications x where x.confirmation_sent_at > now() - interval '1 day') >= 250 then
+    return;
+  end if;
+
+  update public.applications ap
+     set confirmation_sent_at = now()
+   where ap.id = app_id
+     and ap.confirmation_sent_at is null
+     and ap.created_at > now() - interval '15 minutes'
+     and ap.email <> ''
+     and not exists (
+       select 1 from public.applications o
+        where lower(o.email) = lower(ap.email) and o.id <> ap.id
+          and o.confirmation_sent_at > now() - interval '1 day')
+  returning ap.name, ap.email, ap.role into r;
+
+  if not found then return; end if;
+  name := r.name; email := r.email; role := r.role; settings := s;
+  return next;
+end;
+$$;
+revoke all on function public.claim_application_confirmation(uuid) from public;
+grant execute on function public.claim_application_confirmation(uuid) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Live updates for the board (new applications appear without a refresh)
 -- ---------------------------------------------------------------------------
 do $$
@@ -225,6 +351,7 @@ begin
     begin alter publication supabase_realtime add table public.applications;      exception when duplicate_object then null; end;
     begin alter publication supabase_realtime add table public.application_notes; exception when duplicate_object then null; end;
     begin alter publication supabase_realtime add table public.booking_slots;     exception when duplicate_object then null; end;
+    begin alter publication supabase_realtime add table public.application_votes; exception when duplicate_object then null; end;
   end if;
 end $$;
 
