@@ -28,8 +28,6 @@ create table if not exists public.committee_members (
 alter table public.committee_members enable row level security;
 
 -- SECURITY DEFINER so policies can consult the allowlist without exposing it.
--- Also requires a two-factor session (aal2): the portal makes every member set up an
--- authenticator app. Lost phone? Supabase -> Authentication -> Users -> delete their MFA factor.
 create or replace function public.is_committee()
 returns boolean
 language sql
@@ -37,11 +35,10 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce(auth.jwt() ->> 'aal', '') = 'aal2'
-     and exists (
-       select 1 from public.committee_members
-        where email = lower(coalesce(auth.jwt() ->> 'email', ''))
-     );
+  select exists (
+    select 1 from public.committee_members
+    where email = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
 $$;
 revoke all on function public.is_committee() from public;
 grant execute on function public.is_committee() to anon, authenticated;
