@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/site";
 import { BgFlow, Header, Ribbon, ShortFooter, Stats } from "@/components/chrome";
 import { IndexRows } from "@/components/site/index-rows";
 
-export const metadata: Metadata = { title: "About" };
+export const metadata: Metadata = pageMeta(
+  "About: UniMelb's startup club",
+  "StartUp Link UniMelb is the University of Melbourne chapter of StartUp Link Australia: a recruitment-first startup club that gets students into startup roles, builds entrepreneurial skills and plugs them into Melbourne's startup network.",
+  "/about",
+);
 
 export default function AboutPage() {
   return (
@@ -14,7 +19,6 @@ export default function AboutPage() {
           <div className="container">
             <div className="section-head reveal">
               <h2>About us</h2>
-              <p>StartUp Link UniMelb is the University of Melbourne chapter of StartUp Link Australia. We are recruitment-first, not a generic club. Our job is getting you into a startup role.</p>
             </div>
             <IndexRows
               rows={[
