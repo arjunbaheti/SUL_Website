@@ -13,12 +13,6 @@ import { Icon } from "./icons";
 /* ---------------------------------------------------------------------------------------------
  * Names + avatars
  * ------------------------------------------------------------------------------------------- */
-/** "jamie.smith@x.com" -> "Jamie". */
-export function firstName(email: string) {
-  const w = (email.split("@")[0] || "").split(/[._-]+/)[0] || "";
-  return w ? w[0].toUpperCase() + w.slice(1) : "";
-}
-
 function hue(s: string) {
   let h = 0;
   for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360;
@@ -51,11 +45,12 @@ export function AvatarStack({ names, size = 20, max = 3, label }: { names: strin
  * ------------------------------------------------------------------------------------------- */
 type PresenceMeta = { name: string; viewing: string | null };
 
-export function usePresence(me: string, viewing: string | null) {
+/** `name` is the signed-in member's first name (committee_members.first_name); presence stays
+ *  off until it's known, so nobody shows up as an email fragment. */
+export function usePresence(name: string, viewing: string | null) {
   const [peers, setPeers] = useState<PresenceMeta[]>([]);
   const channel = useRef<RealtimeChannel | null>(null);
   const viewingRef = useRef(viewing);
-  const name = firstName(me);
 
   useEffect(() => {
     if (!name) return;
