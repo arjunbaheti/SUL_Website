@@ -333,6 +333,9 @@
     ).filter(function (m) {
       if (seen.indexOf(m) !== -1) return false;
       seen.push(m);
+      // Leave form buttons alone: React owns them (label, disabled state), and inline styles
+      // added before the form hydrates caused hydration mismatch warnings on the apply form.
+      if (m.closest("form")) return false;
       return true;
     });
     els.forEach(function (m) {
