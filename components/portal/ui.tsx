@@ -37,13 +37,44 @@ function useLayer(onEscape: () => void) {
 /* ---------------------------------------------------------------------------------------------
  * Modal: a centred dialog, or a sheet that slides in from the right (variant="sheet").
  * ------------------------------------------------------------------------------------------- */
-export function Modal({ title, subtitle, onClose, children, foot, actions, variant = "dialog", size = "md" }: {
+export function Modal({ title, subtitle, onClose, children, foot, actions, variant = "dialog", size = "md", origin }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; foot?: ReactNode;
   actions?: ReactNode; variant?: "dialog" | "sheet"; size?: "sm" | "md" | "lg";
+  /** Screen rectangle the panel should grow out of (e.g. the card that was clicked). */
+  origin?: DOMRect | null;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const labelId = useId();
+  const [fromOrigin] = useState(() => !!origin && typeof window !== "undefined" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   useLayer(onClose);
+
+  // Grow out of the origin: a plain "ghost" surface expands from the card to the panel's place,
+  // then the panel's content fades in on top of it.
+  useLayoutEffect(() => {
+    const el = panel.current;
+    if (!fromOrigin || !origin || !el) return;
+    const to = el.getBoundingClientRect();
+    const ghost = document.createElement("div");
+    ghost.className = "ui-ghost";
+    Object.assign(ghost.style, { left: origin.left + "px", top: origin.top + "px", width: origin.width + "px", height: origin.height + "px" });
+    document.body.appendChild(ghost);
+    const ease = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+    const grow = ghost.animate(
+      [
+        { left: origin.left + "px", top: origin.top + "px", width: origin.width + "px", height: origin.height + "px", borderRadius: "10px" },
+        { left: to.left + "px", top: to.top + "px", width: to.width + "px", height: to.height + "px", borderRadius: "0px" },
+      ],
+      { duration: 340, easing: ease, fill: "forwards" },
+    );
+    el.style.opacity = "0";
+    grow.onfinish = () => {
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out", fill: "forwards" }).onfinish = () => {
+        el.style.opacity = "";
+        ghost.remove();
+      };
+    };
+    return () => { grow.cancel(); ghost.remove(); el.style.opacity = ""; };
+  }, [fromOrigin, origin]);
 
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -59,7 +90,7 @@ export function Modal({ title, subtitle, onClose, children, foot, actions, varia
   // Rendered on <body> so nothing on the page can paint over it.
   return createPortal(
     <div className={"ui-overlay is-" + variant} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={panel} tabIndex={-1} className={`ui-panel is-${variant} is-${size}`} role="dialog" aria-modal="true" aria-labelledby={labelId}>
+      <div ref={panel} tabIndex={-1} className={`ui-panel is-${variant} is-${size}` + (fromOrigin ? " is-from-origin" : "")} role="dialog" aria-modal="true" aria-labelledby={labelId}>
         <header className="ui-panel-head">
           <div className="ui-panel-title">
             <h2 id={labelId}>{title}</h2>
@@ -407,31 +438,78 @@ function ConfirmHost() {
 /* ---------------------------------------------------------------------------------------------
  * Toasts.
  * ------------------------------------------------------------------------------------------- */
-type Listener = (text: string) => void;
+type ToastAction = { label: string; onClick: () => void };
+type ToastMsg = { text: string; action?: ToastAction; id: number };
+type Listener = (m: ToastMsg) => void;
 const listeners = new Set<Listener>();
-export function toast(text: string) {
-  listeners.forEach((l) => l(text));
+let toastSeq = 0;
+/** Shows a toast. Pass `action` for an inline button, e.g. { label: "Undo", onClick }. */
+export function toast(text: string, opts: { action?: ToastAction } = {}) {
+  const m = { text, action: opts.action, id: ++toastSeq };
+  listeners.forEach((l) => l(m));
 }
 
 function Toaster() {
-  const [text, setText] = useState("");
+  const [msg, setMsg] = useState<ToastMsg | null>(null);
   const [visible, setVisible] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hide = useCallback(() => { clearTimeout(timer.current); setVisible(false); }, []);
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const show: Listener = (t) => {
-      setText(t);
+    const show: Listener = (m) => {
+      setMsg(m);
       setVisible(true);
-      clearTimeout(timer);
-      timer = setTimeout(() => setVisible(false), Math.max(2400, t.length * 60));
+      clearTimeout(timer.current);
+      // Toasts with an action (Undo) stay a little longer so there's time to use it.
+      timer.current = setTimeout(() => setVisible(false), m.action ? 6500 : Math.max(2400, m.text.length * 60));
     };
     listeners.add(show);
-    return () => { listeners.delete(show); clearTimeout(timer); };
+    return () => { listeners.delete(show); clearTimeout(timer.current); };
   }, []);
-  if (!text) return null;
+  if (!msg) return null;
   return createPortal(
-    <div className={"ui-toast" + (visible ? " is-visible" : "")} role="status" aria-live="polite">{text}</div>,
+    <div className={"ui-toast" + (visible ? " is-visible" : "") + (msg.action ? " has-action" : "")} role="status" aria-live="polite">
+      <span>{msg.text}</span>
+      {msg.action ? (
+        <button type="button" className="ui-toast-action" onClick={() => { hide(); msg.action?.onClick(); }}>{msg.action.label}</button>
+      ) : null}
+    </div>,
     document.body,
   );
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Ticker: a number that counts to its new value instead of jumping. Accepts "12", "47%", "3 min".
+ * ------------------------------------------------------------------------------------------- */
+export function Ticker({ value, duration = 520 }: { value: string | number; duration?: number }) {
+  const text = String(value);
+  const m = /^(-?\d+)(.*)$/.exec(text);
+  const target = m ? Number(m[1]) : NaN;
+  const suffix = m ? m[2] : "";
+  const [shown, setShown] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    if (Number.isNaN(target)) return;
+    const start = from.current;
+    if (start === target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      from.current = target;
+      const t = setTimeout(() => setShown(target), 0);
+      return () => clearTimeout(t);
+    }
+    const t0 = performance.now();
+    let raf = 0;
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - k, 3);
+      const v = Math.round(start + (target - start) * eased);
+      setShown(v);
+      from.current = v;
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  if (Number.isNaN(target)) return <>{text}</>;
+  return <span className="ui-ticker">{shown}{suffix}</span>;
 }
 
 /** Mounts the toast and confirm hosts once for the whole portal. */

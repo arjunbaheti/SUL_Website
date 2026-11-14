@@ -6,6 +6,7 @@ import {
   RATINGS, STAGES, STAGE_BY_ID, fmtDate, fmtDateTime, fmtSize, interviewUnlocked, noteFromRow, voteTally,
   safeLink, type Applicant, type Note, type Conflict, type RatingId, type StageId, type Vote,
 } from "@/lib/portal";
+import { AvatarStack } from "./board-extras";
 import { FileViewer } from "./file-viewer";
 import { Icon } from "./icons";
 import { Modal, Select, confirmDialog, shortcutBlocked, toast } from "./ui";
@@ -208,8 +209,9 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
 
 export type PanelNav = { index: number; total: number; prev?: string; next?: string };
 
-export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, onClose, onSaved, onSendInvite, onOpenOther }: {
+export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], onClose, onSaved, onSendInvite, onOpenOther }: {
   a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean; nav?: PanelNav;
+  origin?: DOMRect | null; viewers?: string[];
   onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void; onOpenOther: (id: string) => void;
 }) {
   const [d, setD] = useState<Applicant>(a);
@@ -347,17 +349,23 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
   return (
     <Modal
       variant="sheet"
-      actions={nav && nav.total > 1 ? (
+      origin={origin}
+      actions={
         <div className="sheet-nav">
-          <span className="sheet-nav-count">{nav.index + 1} / {nav.total}</span>
-          <button className="ui-icon-btn" type="button" aria-label="Previous applicant" data-tip="Previous · A" disabled={!nav.prev} onClick={() => goTo(nav.prev)}>
-            <Icon name="chevronLeft" />
-          </button>
-          <button className="ui-icon-btn" type="button" aria-label="Next applicant" data-tip="Next · D" disabled={!nav.next} onClick={() => goTo(nav.next)}>
-            <Icon name="chevronRight" />
-          </button>
+          <AvatarStack names={viewers} size={22} label={viewers.join(", ") + (viewers.length === 1 ? " is" : " are") + " also viewing"} />
+          {nav && nav.total > 1 ? (
+            <>
+              <span className="sheet-nav-count">{nav.index + 1} / {nav.total}</span>
+              <button className="ui-icon-btn" type="button" aria-label="Previous applicant" data-tip="Previous · A" disabled={!nav.prev} onClick={() => goTo(nav.prev)}>
+                <Icon name="chevronLeft" />
+              </button>
+              <button className="ui-icon-btn" type="button" aria-label="Next applicant" data-tip="Next · D" disabled={!nav.next} onClick={() => goTo(nav.next)}>
+                <Icon name="chevronRight" />
+              </button>
+            </>
+          ) : null}
         </div>
-      ) : null}
+      }
       title={a.name || "Unnamed applicant"}
       subtitle={
         <span className="sheet-sub">

@@ -6,7 +6,7 @@ import { fmtDate } from "@/lib/portal";
 import { Bars, median, pct } from "./insights";
 import { Glyph3D } from "./glyph-3d";
 import { Icon } from "./icons";
-import { Menu, Segmented, confirmDialog, toast } from "./ui";
+import { Menu, Segmented, Ticker, confirmDialog, toast } from "./ui";
 
 // Application health: how people get on with the public application form, from the anonymous
 // progress events in public.form_events (lib/form-tracking.ts). Answers are never stored, only
@@ -294,6 +294,12 @@ export function Health() {
     setLoadedAt(Date.now());
   }, []);
   useEffect(() => { const t = setTimeout(load, 0); return () => clearTimeout(t); }, [load]);
+  // Couldn't load: keep trying quietly every 15 seconds.
+  useEffect(() => {
+    if (!error || missing) return;
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [error, missing, load]);
   useEffect(() => {
     if (!live) return;
     const t = setInterval(load, LIVE_EVERY_MS);
@@ -391,7 +397,16 @@ export function Health() {
     </div>
   );
 
-  if (!rows) return <div className="state"><span className="spinner" aria-hidden="true" /><p>Loading form activity…</p></div>;
+  if (!rows) {
+    return (
+      <div className="ins" aria-busy="true" aria-label="Loading form activity">
+        {head}
+        <div className="skel-tiles ins-wide">{[0, 1, 2, 3].map((k) => <span key={k} className="skel" />)}</div>
+        <span className="skel skel-panel" />
+        <span className="skel skel-panel" />
+      </div>
+    );
+  }
   if (missing) {
     return (
       <div className="ins">
@@ -404,13 +419,24 @@ export function Health() {
     );
   }
   if (error) {
-    return <div className="ins">{head}<div className="state is-boxed ins-wide"><h3>Couldn&apos;t load form activity</h3><p>{error}</p></div></div>;
+    return (
+      <div className="ins">
+        {head}
+        <div className="state is-boxed is-error ins-wide">
+          <Glyph3D kind="pulse" />
+          <h3>Couldn&apos;t reach the database</h3>
+          <p>Trying again every 15 seconds…</p>
+          <button className="ui-btn ui-btn-primary" type="button" onClick={load}>Try now</button>
+          <code className="state-detail">{error}</code>
+        </div>
+      </div>
+    );
   }
   if (!allVisits.length) {
     return (
       <div className="ins">
         {head}
-        <div className="state is-boxed ins-wide"><h3>No form activity yet</h3></div>
+        <div className="state is-boxed empty-art ins-wide"><Glyph3D kind="pulse" /><h3>No form activity yet</h3></div>
       </div>
     );
   }
@@ -456,7 +482,7 @@ export function Health() {
         {tiles.map(([l, v, sub]) => (
           <div className="ins-tile" key={l}>
             <div className="ins-tile-label">{l}</div>
-            <div className="ins-tile-value">{v}</div>
+            <div className="ins-tile-value"><Ticker value={v} /></div>
             <div className="ins-tile-sub">{sub}</div>
           </div>
         ))}
