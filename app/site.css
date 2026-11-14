@@ -140,13 +140,14 @@ em, .accent-word {
 
 /* ---------- Custom cursor (white dot + trailing ring) ---------- */
 @media (hover: hover) and (pointer: fine) {
-  body.has-custom-cursor,
-  body.has-custom-cursor a,
-  body.has-custom-cursor button,
-  body.has-custom-cursor input,
-  body.has-custom-cursor select,
-  body.has-custom-cursor textarea,
-  body.has-custom-cursor [role="button"] {
+  /* Not in the committee portal (html[data-app]), which keeps the normal pointer. */
+  html:not([data-app]) body.has-custom-cursor,
+  html:not([data-app]) body.has-custom-cursor a,
+  html:not([data-app]) body.has-custom-cursor button,
+  html:not([data-app]) body.has-custom-cursor input,
+  html:not([data-app]) body.has-custom-cursor select,
+  html:not([data-app]) body.has-custom-cursor textarea,
+  html:not([data-app]) body.has-custom-cursor [role="button"] {
     cursor: none;
   }
 }

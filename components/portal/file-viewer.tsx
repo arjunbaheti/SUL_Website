@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { portalClient } from "@/lib/supabase";
 import { fmtSize, type AppFile } from "@/lib/portal";
+import { Icon } from "./icons";
 
-// Shows an applicant's resume or attachment inside the portal, over the applicant window.
+// Shows an applicant's resume or attachment inside the portal, docked to the left of the applicant
+// panel so the application and the resume can be read side by side (full screen on narrow screens).
 // PDFs and images preview inline; Word/PowerPoint files can't be previewed in a browser
 // without sending them to a third-party viewer, so those get Open / Download buttons instead.
 
@@ -64,7 +66,7 @@ export function FileViewer({ files, startPath, applicantName, onClose }: {
   }
 
   return createPortal(
-    <div className="crm-viewer" role="dialog" aria-modal="true" aria-label={"File from " + applicantName}>
+    <div className="crm-viewer is-docked" role="dialog" aria-modal="false" aria-label={"File from " + applicantName}>
       <div className="crm-viewer-bar">
         <div className="crm-viewer-title">
           <strong>{applicantName}</strong>
@@ -80,9 +82,9 @@ export function FileViewer({ files, startPath, applicantName, onClose }: {
           </div>
         ) : null}
         <span className="spacer" />
-        {url ? <a className="btn btn-secondary btn-sm" href={url} target="_blank" rel="noopener noreferrer">Open in new tab</a> : null}
-        <button className="btn btn-secondary btn-sm" type="button" onClick={download}>Download</button>
-        <button className="crm-close" type="button" aria-label="Close file" onClick={onClose}>×</button>
+        {url ? <a className="ui-btn" href={url} target="_blank" rel="noopener noreferrer"><Icon name="external" />Open</a> : null}
+        <button className="ui-btn" type="button" onClick={download}><Icon name="download" />Download</button>
+        <button className="ui-icon-btn" type="button" aria-label="Close file" title="Close" onClick={onClose}><Icon name="x" /></button>
       </div>
       <div className="crm-viewer-body" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
         {error ? (
@@ -98,7 +100,7 @@ export function FileViewer({ files, startPath, applicantName, onClose }: {
           <div className="crm-viewer-msg">
             <p>Word and PowerPoint files can&apos;t be previewed here.</p>
             <div className="crm-settings-actions" style={{ justifyContent: "center" }}>
-              <button className="btn btn-primary btn-sm" type="button" onClick={download}>Download {file.name || "file"}</button>
+              <button className="ui-btn ui-btn-primary" type="button" onClick={download}>Download {file.name || "file"}</button>
             </div>
           </div>
         )}
