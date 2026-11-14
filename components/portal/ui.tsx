@@ -473,12 +473,18 @@ export function useTheme() {
 }
 
 /** Marks the page as the portal app while mounted, so portal styles apply and the public site's
- *  cursor effects switch off. */
-export function usePortalDocument() {
+ *  cursor effects switch off. `fontClass` puts the portal font on <html>, so dialogs rendered on
+ *  <body> get it too. */
+export function usePortalDocument(fontClass?: string) {
   useEffect(() => {
     const d = document.documentElement;
     d.dataset.app = "portal";
+    if (fontClass) d.classList.add(fontClass);
     applyTheme(readTheme());
-    return () => { delete d.dataset.app; delete d.dataset.theme; };
-  }, []);
+    return () => {
+      delete d.dataset.app;
+      delete d.dataset.theme;
+      if (fontClass) d.classList.remove(fontClass);
+    };
+  }, [fontClass]);
 }

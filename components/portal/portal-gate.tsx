@@ -10,14 +10,14 @@ import { PortalHosts, THEME_KEY, usePortalDocument } from "./ui";
 // is already in the right theme. On client-side navigations the script doesn't run (React never
 // executes inserted scripts) and usePortalDocument() covers it instead. Rendered as text/plain on
 // the client so React doesn't warn about a script tag.
-const THEME_BOOT = `(function(){try{var d=document.documentElement;d.dataset.app="portal";var t=localStorage.getItem(${JSON.stringify(THEME_KEY)});if(t==="light"||t==="dark")d.dataset.theme=t;}catch(e){}})();`;
+const themeBoot = (fontClass: string) => `(function(){try{var d=document.documentElement;d.dataset.app="portal";d.classList.add(${JSON.stringify(fontClass)});var t=localStorage.getItem(${JSON.stringify(THEME_KEY)});if(t==="light"||t==="dark")d.dataset.theme=t;}catch(e){}})();`;
 
-function ThemeBoot() {
+function ThemeBoot({ fontClass }: { fontClass: string }) {
   return (
     <script
       type={typeof window === "undefined" ? "text/javascript" : "text/plain"}
       suppressHydrationWarning
-      dangerouslySetInnerHTML={{ __html: THEME_BOOT }}
+      dangerouslySetInnerHTML={{ __html: themeBoot(fontClass) }}
     />
   );
 }
@@ -25,8 +25,8 @@ function ThemeBoot() {
 // Real sign-in via Supabase Auth. Access is enforced by the database (Row Level Security plus
 // the committee_members allowlist in supabase/schema.sql), not by this page: even if someone
 // forced the portal view open they would get no data without a valid committee session.
-export function PortalGate() {
-  usePortalDocument();
+export function PortalGate({ fontClass }: { fontClass: string }) {
+  usePortalDocument(fontClass);
   const [state, setState] = useState<"checking" | "out" | "in">("checking");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -83,7 +83,7 @@ export function PortalGate() {
 
   return (
     <>
-      <ThemeBoot />
+      <ThemeBoot fontClass={fontClass} />
       {state === "in" ? <Crm /> : (
         <div className="auth" aria-busy={state === "checking"}>
           <div className="auth-card" hidden={state === "checking"}>
