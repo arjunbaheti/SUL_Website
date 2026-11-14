@@ -39,6 +39,7 @@ html[data-app="portal"] {
   --shadow-panel: 0 24px 60px -16px rgba(17, 17, 26, 0.28);
   --bar-bg: rgba(246, 246, 247, 0.82);
   --chart: #3366e6;
+  --logo-filter: brightness(0);
 
   --r-sm: 6px;
   --r: 8px;
@@ -80,6 +81,7 @@ html[data-app="portal"] {
     --shadow-panel: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
     --bar-bg: rgba(11, 11, 13, 0.8);
     --chart: #86aefc;
+    --logo-filter: none;
     color-scheme: dark;
   }
 }
@@ -116,6 +118,7 @@ html[data-app="portal"][data-theme="dark"] {
   --shadow-panel: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
   --bar-bg: rgba(11, 11, 13, 0.8);
   --chart: #86aefc;
+  --logo-filter: none;
   color-scheme: dark;
 }
 
@@ -430,7 +433,7 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
   box-shadow: var(--shadow-lift);
 }
 .auth-card[hidden] { display: none; }
-.auth-mark { display: block; width: 40px; height: 40px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 0 0 1px var(--border-strong); }
+.auth-mark { height: 40px; margin-bottom: 28px; }
 .auth-card h1 { margin: 0 0 24px; font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
 .auth-sub { margin: 4px 0 24px; color: var(--muted); font-size: 13px; }
 .auth-card .ui-input { margin-bottom: 14px; height: 38px; }
@@ -452,7 +455,9 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
 }
 .app-bar-inner { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 20px; }
 .app-brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: var(--fg) !important; font-weight: 550; font-size: 13.5px; letter-spacing: -0.01em; }
-.app-brand img { width: 22px; height: 22px; border-radius: 6px; box-shadow: 0 0 0 1px var(--border-strong); }
+/* The real StartUp Link wordmark is white; light mode shows it in black. */
+.brand-wordmark { display: block; width: auto; filter: var(--logo-filter); }
+.app-brand .brand-wordmark { height: 26px; }
 .app-bar-slash { color: var(--border-strong); font-size: 18px; font-weight: 300; margin: 0 -2px; }
 .app-bar-crumb { color: var(--fg-2); font-size: 13.5px; font-weight: 500; }
 .app-tabs { display: flex; gap: 2px; margin-left: 18px; }
@@ -496,7 +501,8 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
 
 @media (max-width: 720px) {
   .app-bar-inner { padding: 0 12px; gap: 6px; }
-  .app-brand-name, .app-bar-slash, .app-bar-crumb { display: none; }
+  .app-bar-slash, .app-bar-crumb { display: none; }
+  .app-brand .brand-wordmark { height: 22px; }
   .app-tabs { margin-left: 4px; }
   .app-body { padding: 20px 14px 96px; }
 }
@@ -530,25 +536,17 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
 .page-head p { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .live-dot { width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  margin: 0 0 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-.stat { padding: 16px 18px; min-width: 0; transition: background-color 0.15s ease; }
-.stat:hover { background: var(--surface-2); }
-.stat + .stat { border-left: 1px solid var(--border); }
-.stat dt { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-.stat dd { margin: 6px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+/* Compact stat row, sitting beside the page title. */
+.pipe-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 22px; margin: 0; }
+.pipe-stat { display: flex; align-items: baseline; gap: 6px; }
+.pipe-stat + .pipe-stat { position: relative; }
+.pipe-stat + .pipe-stat::before { content: ""; position: absolute; left: -11px; top: 50%; width: 1px; height: 14px; transform: translateY(-50%); background: var(--border); }
+.pipe-stat dd { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.pipe-stat dt { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 @media (max-width: 860px) {
-  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .stat:nth-child(4) { border-left: 0; }
-  .stat:nth-child(n + 4) { border-top: 1px solid var(--border); }
+  .page-head:has(.pipe-stats) { flex-direction: column; align-items: flex-start; }
+  .pipe-stats { gap: 6px 16px; }
+  .pipe-stat + .pipe-stat::before { display: none; }
 }
 
 /* ---------- Toolbar ---------- */
@@ -606,8 +604,7 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
   flex: 0 0 272px;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 290px);
-  min-height: 220px;
+  min-height: 0;
   background: var(--column);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -1249,3 +1246,13 @@ i.v, span.v { display: inline-block; width: 7px; height: 7px; border-radius: 50%
 .crm-board::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 3px solid var(--bg); }
 .crm-board::-webkit-scrollbar-track { background: transparent; }
 .h-note { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--subtle); letter-spacing: 0; }
+
+/* ---------- Board fills the window ----------
+   On the board the app is exactly one screen tall: columns run to the bottom and scroll inside
+   themselves, so the page never looks half-empty however many applicants there are. */
+.app.is-board { height: 100vh; height: 100dvh; }
+.app.is-board .app-body { display: flex; flex-direction: column; min-height: 0; padding-bottom: 16px; }
+.board-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.board-view[hidden] { display: none; }
+.board-view .crm-board { flex: 1; min-height: 320px; align-items: stretch; padding-bottom: 8px; }
+.board-view .state.is-boxed { flex: 1; justify-content: center; }

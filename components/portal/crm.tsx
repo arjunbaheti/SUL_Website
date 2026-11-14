@@ -359,8 +359,7 @@ export function Crm() {
       <div className="app-bar-inner">
         <a className="app-brand" href="/" title="StartUp Link UniMelb website">
           {/* eslint-disable-next-line @next/next/no-img-element -- tiny static brand mark */}
-          <img src="/icon.png" alt="" width={22} height={22} />
-          <span className="app-brand-name">StartUp Link</span>
+          <img className="brand-wordmark" src="/img/logo.png" alt="StartUp Link UniMelb" width={898} height={315} />
         </a>
         <span className="app-bar-slash" aria-hidden="true">/</span>
         <span className="app-bar-crumb">Recruitment</span>
@@ -450,22 +449,21 @@ export function Crm() {
   ];
 
   return (
-    <div className="app">
+    <div className={"app" + (view === "board" ? " is-board" : "")}>
       {topbar}
       <div className="app-body">
         {view === "insights" ? <Insights applicants={applicants} /> : null}
         {view === "health" ? <Health /> : null}
-        <div hidden={view !== "board"}>
+        <div className="board-view" hidden={view !== "board"}>
           <div className="page-head">
             <div>
               <h1>Pipeline</h1>
               {filtering ? <p>{visible.length} of {applicants.length} shown</p> : null}
             </div>
+            <dl className="pipe-stats">
+              {tiles.map(([l, v]) => <div className="pipe-stat" key={l}><dd>{v}</dd><dt>{l}</dt></div>)}
+            </dl>
           </div>
-
-          <dl className="stats">
-            {tiles.map(([l, v]) => <div className="stat" key={l}><dt>{l}</dt><dd>{v}</dd></div>)}
-          </dl>
 
           <div className="toolbar">
             <label className="search">
