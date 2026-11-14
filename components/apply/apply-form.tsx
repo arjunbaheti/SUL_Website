@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { applyClient } from "@/lib/supabase";
+import { resetFormSession, trackForm } from "@/lib/form-tracking";
 import { TEAMS } from "@/components/chrome";
 
 // Same markup and class names as the original recruitment form, so the original stylesheet
@@ -64,6 +65,20 @@ export function ApplyForm() {
   const [experience, setExperience] = useState("");
   const [picked, setPicked] = useState<{ resume: string; extra: string }>({ resume: "", extra: "" });
 
+  // Anonymous progress tracking for the committee's Health dashboard (field names only, no answers).
+  useEffect(() => { trackForm("view"); }, []);
+  // A field counts as filled in when you leave it with a value (typed fields) or as soon as you
+  // pick something (dropdowns, files, the consent box).
+  function noteProgress(e: React.SyntheticEvent<HTMLFormElement>) {
+    const t = e.target as HTMLInputElement;
+    if (!t.name || t.name === "website") return;
+    trackForm("start");
+    const typed = (t.tagName === "INPUT" && !["checkbox", "file", "radio"].includes(t.type)) || t.tagName === "TEXTAREA";
+    if (typed && e.type !== "blur") return;
+    const filled = t.type === "checkbox" ? t.checked : t.type === "file" ? !!t.files?.length : !!t.value?.trim();
+    if (filled) trackForm("field", t.name);
+  }
+
   function clearInvalid(e: React.FormEvent<HTMLFormElement>) {
     const t = e.target as HTMLElement;
     if (t.getAttribute?.("aria-invalid")) {
@@ -109,12 +124,14 @@ export function ApplyForm() {
     if (extraProblem) fail(el.extra, extraProblem);
     if (!el.consent.checked) fail(el.consent, "Please tick the consent box to continue.");
     if (bad) {
+      trackForm("invalid", (bad as HTMLInputElement).name);
       (bad as HTMLElement).setAttribute("aria-invalid", "true");
       (bad as HTMLElement).focus();
       setStatus({ text: problem, error: true });
       return;
     }
 
+    trackForm("submit");
     setBusy(true);
     setStatus({ text: "Uploading your files…", error: false });
     const db = applyClient();
@@ -127,10 +144,12 @@ export function ApplyForm() {
       return { path, name: file.name, size: file.size, mime, kind };
     };
 
+    let stage = "upload";
     try {
       const uploads = [upload(resume!, "resume", RESUME_TYPES)];
       if (extra) uploads.push(upload(extra, "other", EXTRA_TYPES));
       const files = await Promise.all(uploads);
+      stage = "save";
       setStatus({ text: "Saving your application…", error: false });
       const { error } = await db.from("applications").insert({
         id,
@@ -158,9 +177,12 @@ export function ApplyForm() {
         body: JSON.stringify({ id }),
         keepalive: true,
       }).catch(() => {});
+      trackForm("submitted");
+      resetFormSession();
       done(firstName());
     } catch (err) {
       console.error(err);
+      trackForm("error", stage);
       const msg = err instanceof Error && err.message ? err.message : "Something went wrong";
       setStatus({ text: msg + ". Please try again, or email info@startuplinkunimelb.net.", error: true });
       setBusy(false);
@@ -174,7 +196,7 @@ export function ApplyForm() {
 
   return (
     <>
-      <form className="card apply-card" id="apply-form" noValidate ref={formRef} onSubmit={onSubmit} onInput={clearInvalid} onChange={clearInvalid} hidden={success !== null}>
+      <form className="card apply-card" id="apply-form" noValidate ref={formRef} onSubmit={onSubmit} onInput={clearInvalid} onChange={(e) => { clearInvalid(e); noteProgress(e); }} onBlur={noteProgress} hidden={success !== null}>
         <fieldset className="apply-group">
           <legend><span className="step-text">About you<small>Who we&apos;re talking to.</small></span></legend>
           <div className="form-field">

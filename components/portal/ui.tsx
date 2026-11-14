@@ -323,7 +323,7 @@ export function Menu({ label, items, children, className = "ui-icon-btn", align 
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={label}
-        title={className.includes("ui-icon-btn") ? label : undefined}
+        data-tip={className.includes("ui-icon-btn") ? label : undefined}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); } }}

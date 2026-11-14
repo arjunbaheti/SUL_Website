@@ -9,6 +9,7 @@ import {
 } from "@/lib/portal";
 import { ApplicantModal } from "./applicant-modal";
 import { Insights } from "./insights";
+import { Health } from "./health";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
 import { SendModal } from "./send-modal";
 import { SettingsModal, type PurgeMode } from "./settings-modal";
@@ -95,7 +96,7 @@ export function Crm() {
   const [settingsMeta, setSettingsMeta] = useState<SettingsMeta>({ updatedAt: "", updatedBy: "", missingTable: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [me, setMe] = useState("");
-  const [view, setView] = useState<"board" | "insights">("board");
+  const [view, setView] = useState<"board" | "insights" | "health">("board");
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<BulkKind | null>(null);
@@ -370,6 +371,9 @@ export function Crm() {
           <button type="button" aria-current={view === "insights" ? "page" : undefined} onClick={() => { exitSelect(); setView("insights"); }}>
             <Icon name="chart" />Insights
           </button>
+          <button type="button" aria-current={view === "health" ? "page" : undefined} onClick={() => { exitSelect(); setView("health"); }}>
+            <Icon name="pulse" />Health
+          </button>
         </nav>
         <div className="app-bar-end">
           <Menu
@@ -386,7 +390,7 @@ export function Crm() {
           <button
             className="ui-icon-btn"
             type="button"
-            title="Settings"
+            data-tip="Settings"
             aria-label="Settings"
             onClick={async () => { await refreshSettings(); setSettingsOpen(true); }}
           >
@@ -450,6 +454,7 @@ export function Crm() {
       {topbar}
       <div className="app-body">
         {view === "insights" ? <Insights applicants={applicants} /> : null}
+        {view === "health" ? <Health /> : null}
         <div hidden={view !== "board"}>
           <div className="page-head">
             <div>
@@ -644,7 +649,7 @@ export function Crm() {
           </Menu>
           <span className="bulk-sep" aria-hidden="true" />
           <button className="ui-btn ui-btn-ghost" type="button" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button>
-          <button className="ui-icon-btn" type="button" aria-label="Exit selection" title="Exit selection" onClick={exitSelect}><Icon name="x" /></button>
+          <button className="ui-icon-btn" type="button" aria-label="Exit selection" data-tip="Exit selection" onClick={exitSelect}><Icon name="x" /></button>
         </div>
       ) : null}
 

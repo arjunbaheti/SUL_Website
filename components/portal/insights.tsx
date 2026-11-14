@@ -43,7 +43,7 @@ function firstAt(a: Applicant, test: (text: string) => boolean) {
   return t;
 }
 
-function median(xs: number[]) {
+export function median(xs: number[]) {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
@@ -51,7 +51,7 @@ function median(xs: number[]) {
 }
 const days = (from: string, to: string) => (+new Date(to) - +new Date(from)) / DAY;
 const fmtDays = (d: number | null) => (d === null ? "—" : d < 1 ? "< 1 day" : `${d.toFixed(d < 10 ? 1 : 0)} days`);
-const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) + "%" : "—");
+export const pct = (n: number, d: number) => (d ? Math.round((n / d) * 100) + "%" : "—");
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function countBy(items: string[], top = 8) {
@@ -63,7 +63,7 @@ function countBy(items: string[], top = 8) {
   return [...rows.slice(0, top - 1), ["Other", rest] as [string, number]];
 }
 
-function Bars({ rows, total, note }: { rows: [string, number, string?][]; total: number; note?: string }) {
+export function Bars({ rows, total, note }: { rows: [string, number, string?][]; total: number; note?: string }) {
   const max = Math.max(1, ...rows.map((r) => r[1]));
   return (
     <div className="ins-bars">
