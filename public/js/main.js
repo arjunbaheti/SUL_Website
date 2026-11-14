@@ -248,50 +248,6 @@
     window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // ---- Custom cursor: white dot + lerp-trailing ring ----
-  function initCursor() {
-    var fine = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-    if (!fine) return;
-
-    var dot = el("div", { class: "cursor-dot" });
-    var ring = el("div", { class: "cursor-ring" });
-    document.body.appendChild(dot);
-    document.body.appendChild(ring);
-    document.body.classList.add("has-custom-cursor");
-
-    var mx = window.innerWidth / 2, my = window.innerHeight / 2;
-    var rx = mx, ry = my;
-
-    document.addEventListener("mousemove", function (e) {
-      mx = e.clientX;
-      my = e.clientY;
-      dot.style.transform = "translate(" + mx + "px," + my + "px) translate(-50%,-50%)";
-    });
-
-    (function raf() {
-      rx += (mx - rx) * 0.18;
-      ry += (my - ry) * 0.18;
-      ring.style.transform = "translate(" + rx + "px," + ry + "px) translate(-50%,-50%)";
-      requestAnimationFrame(raf);
-    })();
-
-    var hoverSel = "a, button, input, select, textarea, [role='button'], .card, .marquee-item, .partner-card";
-    document.addEventListener("mouseover", function (e) {
-      if (e.target.closest(hoverSel)) document.body.classList.add("cursor-hover");
-    });
-    document.addEventListener("mouseout", function (e) {
-      if (e.target.closest(hoverSel)) document.body.classList.remove("cursor-hover");
-    });
-    document.addEventListener("mousedown", function () { document.body.classList.add("cursor-down"); });
-    document.addEventListener("mouseup", function () { document.body.classList.remove("cursor-down"); });
-    document.addEventListener("mouseleave", function () {
-      dot.style.opacity = "0"; ring.style.opacity = "0";
-    });
-    document.addEventListener("mouseenter", function () {
-      dot.style.opacity = "1"; ring.style.opacity = "1";
-    });
-  }
-
   // ---- Scroll progress bar (injected, global) ----
   function initScrollProgress() {
     var bar = el("div", { class: "scroll-progress" });
@@ -537,7 +493,6 @@
     initNav();
     initNavScroll();
     initReveal();
-    initCursor();
     initScrollProgress();
     initCountUp();
     initMagnetic();

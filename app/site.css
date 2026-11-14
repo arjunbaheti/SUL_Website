@@ -138,64 +138,11 @@ em, .accent-word {
   z-index: 2;
 }
 
-/* ---------- Custom cursor (white dot + trailing ring) ---------- */
-@media (hover: hover) and (pointer: fine) {
-  /* Not in the committee portal (html[data-app]), which keeps the normal pointer. */
-  html:not([data-app]) body.has-custom-cursor,
-  html:not([data-app]) body.has-custom-cursor a,
-  html:not([data-app]) body.has-custom-cursor button,
-  html:not([data-app]) body.has-custom-cursor input,
-  html:not([data-app]) body.has-custom-cursor select,
-  html:not([data-app]) body.has-custom-cursor textarea,
-  html:not([data-app]) body.has-custom-cursor [role="button"] {
-    cursor: none;
-  }
-}
-
-.cursor-dot,
-.cursor-ring {
-  position: fixed;
-  top: 0;
-  left: 0;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9999;
-  transform: translate(-50%, -50%);
-  will-change: transform;
-}
-
-.cursor-dot {
-  width: 7px;
-  height: 7px;
-  background: #ffffff;
-  transition: width 0.18s ease, height 0.18s ease, background-color 0.18s ease;
-}
-
-.cursor-ring {
-  width: 34px;
-  height: 34px;
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
-  transition: width 0.22s ease, height 0.22s ease, border-color 0.22s ease,
-    background-color 0.22s ease;
-}
-
-body.cursor-hover .cursor-ring {
-  width: 52px;
-  height: 52px;
-  border-color: var(--sul-primary);
-  background: var(--sul-primary-soft);
-}
-
-body.cursor-hover .cursor-dot {
-  width: 10px;
-  height: 10px;
-  background: var(--sul-accent);
-}
-
-body.cursor-down .cursor-ring {
-  width: 26px;
-  height: 26px;
-}
+/* ---------- Pointer trail (components/cursor-trail.tsx) ----------
+   A soft light-blue trail behind the normal cursor, shared with the committee portal
+   (which sets its own --trail per theme). */
+:root { --trail: 170, 210, 255; }
+.cursor-trail { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 500; pointer-events: none; }
 
 /* ---------- Scroll progress bar ---------- */
 .scroll-progress {

@@ -81,9 +81,9 @@ export function CursorTrail() {
     };
     const onLeave = () => { pts.length = 0; };
 
-    // Theme switches change the trail colour.
+    // Theme switches (and entering/leaving the portal) change the trail colour.
     const themeObserver = new MutationObserver(readColor);
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-app"] });
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
     scheme.addEventListener("change", readColor);
 
