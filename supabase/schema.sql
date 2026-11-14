@@ -22,9 +22,11 @@
 -- ---------------------------------------------------------------------------
 create table if not exists public.committee_members (
   email      text primary key,
+  first_name text,  -- shown in the portal ("Good morning, Arjun") and in live presence
   added_at   timestamptz not null default now(),
   constraint committee_email_lower check (email = lower(email))
 );
+alter table public.committee_members add column if not exists first_name text;
 alter table public.committee_members enable row level security;
 
 -- SECURITY DEFINER so policies can consult the allowlist without exposing it.
@@ -421,6 +423,6 @@ end $$;
 
 -- ---------------------------------------------------------------------------
 -- AFTER RUNNING: add yourself (and each reviewer) to the allowlist, e.g.
---   insert into public.committee_members (email) values ('you@startuplinkunimelb.net');
+--   insert into public.committee_members (email, first_name) values ('you@startuplinkunimelb.net', 'Your first name');
 -- then create the matching user in Authentication -> Users (see README, "Backend setup").
 -- ---------------------------------------------------------------------------

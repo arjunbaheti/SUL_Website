@@ -1399,8 +1399,6 @@ html[data-app="portal"][data-theme="dark"] .avatar { background: hsl(var(--h, 22
 
 /* Greeting under the board title */
 .greet { margin: 6px 0 0 !important; font-size: 14px; color: var(--muted); }
-.greet-link { padding: 0; border: 0; background: none; color: var(--fg); font: inherit; font-weight: 500; cursor: pointer; text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
-.greet-link:hover { text-decoration-color: currentColor; }
 
 /* Empty + error states with the page's 3D mark */
 .empty-art .net-glyph, .state.is-error .net-glyph { width: 88px; height: 88px; margin: 0 0 6px; }

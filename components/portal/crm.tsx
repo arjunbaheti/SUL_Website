@@ -18,7 +18,7 @@ import { DEFAULT_SETTINGS, loadSettings, type PortalSettings, type SettingsMeta 
 import { Icon } from "./icons";
 import { Menu, Select, Ticker, toast, useTheme, type SelectOption } from "./ui";
 import { CommandMenu, type Command } from "./command-menu";
-import { AvatarStack, BoardSkeleton, HoverPreview, firstName, useFlip, usePeek, usePresence } from "./board-extras";
+import { AvatarStack, BoardSkeleton, HoverPreview, useFlip, usePeek, usePresence } from "./board-extras";
 
 // The committee recruitment board: the app shell (top bar), the pipeline board and the
 // insights view. Styled by app/portal.css.
@@ -260,9 +260,21 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Who is signed in (for "your vote" and the "needs my vote" filter).
+  // Who is signed in (for "your vote" and the "needs my vote" filter), and their first name from
+  // committee_members.first_name (blank until it's filled in, or before the migration is run).
+  const [myName, setMyName] = useState("");
   useEffect(() => {
-    portalClient().auth.getSession().then(({ data }) => setMe((data.session?.user.email ?? "").toLowerCase()));
+    let alive = true;
+    portalClient().auth.getSession().then(async ({ data }) => {
+      const email = (data.session?.user.email ?? "").toLowerCase();
+      if (!alive) return;
+      setMe(email);
+      if (!email) return;
+      const { data: row } = await portalClient().from("committee_members").select("first_name").eq("email", email).maybeSingle();
+      const name = typeof row?.first_name === "string" ? row.first_name.trim() : "";
+      if (alive && name) setMyName(name);
+    });
+    return () => { alive = false; };
   }, []);
 
   const refreshSettings = useCallback(async () => {
@@ -404,7 +416,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const setFilter = (k: keyof typeof filters, v: string) => setFilters((f) => ({ ...f, [k]: v }));
 
   // Who else is here, and who's looking at which applicant.
-  const { online, viewers } = usePresence(me, openId);
+  const { online, viewers } = usePresence(myName, openId);
   // Hover previews (not while selecting or dragging).
   const { peek, enter: peekEnter, leave: peekLeave } = usePeek(!selectMode && !dragging && !openId && view === "board");
   // Cards slide to their new place when they move.
@@ -700,7 +712,6 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const nav: PanelNav | undefined = at >= 0 ? { index: at, total: order.length, prev: order[at - 1], next: order[at + 1] } : undefined;
   const sending = send ? applicants.find((a) => a.id === send.id) : undefined;
   const filtering = !!(filters.q || filters.role || filters.rating);
-  const myQueue = applicants.filter((a) => needsMyVote(a, me)).length;
 
   const commands: Command[] = [
     { id: "v:board", group: "Go to", label: "Board", icon: "board", keywords: "pipeline kanban", run: () => setView("board") },
@@ -741,17 +752,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
                 <h1>Pipeline</h1>
               </div>
               {filtering ? <p>{visible.length} of {applicants.length} shown</p> : (
-                <p className="greet">
-                  {greeting()}{firstName(me) ? `, ${firstName(me)}` : ""}
-                  {myQueue ? (
-                    <>
-                      <span aria-hidden="true"> · </span>
-                      <button type="button" className="greet-link" onClick={() => setFilter("rating", "needs-my-vote")}>
-                        {myQueue} need{myQueue === 1 ? "s" : ""} your vote
-                      </button>
-                    </>
-                  ) : null}
-                </p>
+                <p className="greet">{greeting()}{myName ? `, ${myName}` : ""}</p>
               )}
             </div>
             <dl className="pipe-stats">
