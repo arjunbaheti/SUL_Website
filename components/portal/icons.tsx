@@ -4,6 +4,8 @@
 const PATHS = {
   search: <><circle cx="7" cy="7" r="4.25" /><path d="m10.25 10.25 3 3" /></>,
   chevronDown: <path d="m4.5 6.25 3.5 3.5 3.5-3.5" />,
+  chevronLeft: <path d="M9.75 4.5 6.25 8l3.5 3.5" />,
+  chevronRight: <path d="m6.25 4.5 3.5 3.5-3.5 3.5" />,
   chevronUpDown: <><path d="m5.25 6 2.75-2.75L10.75 6" /><path d="m5.25 10 2.75 2.75L10.75 10" /></>,
   check: <path d="m3.75 8.25 2.75 2.75 5.75-6" />,
   x: <><path d="m4.5 4.5 7 7" /><path d="m11.5 4.5-7 7" /></>,

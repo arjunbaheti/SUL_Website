@@ -28,6 +28,8 @@ create table if not exists public.committee_members (
 alter table public.committee_members enable row level security;
 
 -- SECURITY DEFINER so policies can consult the allowlist without exposing it.
+-- Also requires a two-factor session (aal2): the portal makes every member set up an
+-- authenticator app. Lost phone? Supabase -> Authentication -> Users -> delete their MFA factor.
 create or replace function public.is_committee()
 returns boolean
 language sql
@@ -35,10 +37,11 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
-    select 1 from public.committee_members
-    where email = lower(coalesce(auth.jwt() ->> 'email', ''))
-  );
+  select coalesce(auth.jwt() ->> 'aal', '') = 'aal2'
+     and exists (
+       select 1 from public.committee_members
+        where email = lower(coalesce(auth.jwt() ->> 'email', ''))
+     );
 $$;
 revoke all on function public.is_committee() from public;
 grant execute on function public.is_committee() to anon, authenticated;
@@ -382,6 +385,29 @@ create policy "committee clears form events" on public.form_events for delete to
 
 grant insert on public.form_events to anon, authenticated;
 grant select, delete on public.form_events to authenticated;
+
+-- Drop junk: at most 150 events per visit and 600 per minute overall.
+create or replace function public.form_events_cap()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (select count(*) from public.form_events where session_id = new.session_id) >= 150 then
+    return null;
+  end if;
+  if (select count(*) from public.form_events where created_at > now() - interval '1 minute') >= 600 then
+    return null;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.form_events_cap() from public;
+drop trigger if exists form_events_cap on public.form_events;
+create trigger form_events_cap before insert on public.form_events
+  for each row execute function public.form_events_cap();
+
 
 -- ---------------------------------------------------------------------------
 -- Live updates for the board (new applications appear without a refresh)

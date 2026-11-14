@@ -8,7 +8,7 @@ import {
 } from "@/lib/portal";
 import { FileViewer } from "./file-viewer";
 import { Icon } from "./icons";
-import { Modal, Select, confirmDialog, toast } from "./ui";
+import { Modal, Select, confirmDialog, shortcutBlocked, toast } from "./ui";
 
 // Fields the committee can edit -> database column. Only changed fields are sent, so two
 // reviewers editing different fields don't clobber each other.
@@ -50,6 +50,18 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
   const t = voteTally(votes);
   const iConflict = mine === "conflict";
 
+  // 1 / 2 / 3 vote Yes / Maybe / No (pressing your current vote again clears it).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const v = ({ "1": "yes", "2": "maybe", "3": "no" } as const)[e.key as "1" | "2" | "3"];
+      if (!v || shortcutBlocked(e) || saving || iConflict) return;
+      e.preventDefault();
+      save(v === mine ? "" : v);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
   async function save(next: MyVote) {
     if (!me || saving) return;
     const prev = mine;
@@ -80,6 +92,7 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
           <button
             key={v} type="button" data-r={v} aria-pressed={mine === v} disabled={saving || iConflict}
             title={iConflict ? "You've declared a conflict of interest, so you can't vote" : undefined}
+            data-tip={iConflict ? undefined : "Press " + ({ yes: 1, maybe: 2, no: 3 } as const)[v]}
             onClick={() => save(v === mine ? "" : v)} // clicking your current vote clears it
           >
             <span className={"v " + v} aria-hidden="true" />{VOTE_LABEL[v]}
@@ -193,8 +206,10 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
   );
 }
 
-export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, onClose, onSaved, onSendInvite, onOpenOther }: {
-  a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean;
+export type PanelNav = { index: number; total: number; prev?: string; next?: string };
+
+export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, onClose, onSaved, onSendInvite, onOpenOther }: {
+  a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean; nav?: PanelNav;
   onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void; onOpenOther: (id: string) => void;
 }) {
   const [d, setD] = useState<Applicant>(a);
@@ -248,6 +263,28 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
     onClose();
     if (dirtySaved.current) await onSaved();
   }, [saveNow, onClose, onSaved]);
+
+  // Jump to another applicant, saving anything still waiting first.
+  const goTo = useCallback(async (id?: string) => {
+    if (!id) return;
+    await saveNow();
+    if (dirtySaved.current) await onSaved();
+    onOpenOther(id);
+  }, [saveNow, onSaved, onOpenOther]);
+
+  // A / ← previous, D / → next, in the same order as the board.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (shortcutBlocked(e)) return;
+      const k = e.key.toLowerCase();
+      const target = k === "a" || e.key === "ArrowLeft" ? nav?.prev : k === "d" || e.key === "ArrowRight" ? nav?.next : undefined;
+      if (!target) return;
+      e.preventDefault();
+      goTo(target);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [nav, goTo]);
 
   const allNotes = [...extra, ...a.notes.filter((n) => !extra.some((x) => x.id && x.id === n.id))];
   const appNotes = allNotes.filter((n) => n.type === "manual");
@@ -310,6 +347,17 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
   return (
     <Modal
       variant="sheet"
+      actions={nav && nav.total > 1 ? (
+        <div className="sheet-nav">
+          <span className="sheet-nav-count">{nav.index + 1} / {nav.total}</span>
+          <button className="ui-icon-btn" type="button" aria-label="Previous applicant" data-tip="Previous · A" disabled={!nav.prev} onClick={() => goTo(nav.prev)}>
+            <Icon name="chevronLeft" />
+          </button>
+          <button className="ui-icon-btn" type="button" aria-label="Next applicant" data-tip="Next · D" disabled={!nav.next} onClick={() => goTo(nav.next)}>
+            <Icon name="chevronRight" />
+          </button>
+        </div>
+      ) : null}
       title={a.name || "Unnamed applicant"}
       subtitle={
         <span className="sheet-sub">
@@ -336,7 +384,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
           {duplicates.map((o, i) => (
             <span key={o.id}>
               {i ? ", " : ""}
-              <button type="button" className="crm-linkbtn" onClick={async () => { await saveNow(); if (dirtySaved.current) await onSaved(); onOpenOther(o.id); }}>
+              <button type="button" className="crm-linkbtn" onClick={() => goTo(o.id)}>
                 {o.role || "no team"} · {fmtDate(o.createdAt)} · {STAGE_BY_ID[o.status].label}
               </button>
             </span>
