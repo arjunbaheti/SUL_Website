@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import { fmtDate } from "@/lib/portal";
 import { Bars, median, pct } from "./insights";
+import { Glyph3D } from "./glyph-3d";
 import { Icon } from "./icons";
 import { Menu, Segmented, confirmDialog, toast } from "./ui";
 
@@ -368,7 +369,8 @@ export function Health() {
 
   const head = (
     <div className="page-head ins-head">
-      <div>
+      <div className="title-row">
+        <Glyph3D kind="pulse" />
         <h1>Application health</h1>
       </div>
       <div className="page-head-actions">

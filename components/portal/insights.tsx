@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { SEND_META, STAGES, fmtDate, fmtDateTime, type Applicant, type StageId } from "@/lib/portal";
+import { Glyph3D } from "./glyph-3d";
 
 // Recruitment insights for the exec: volume, mix, funnel, timing and reviewer workload.
 // Everything is computed from the applicants the board already loaded (no extra queries).
@@ -196,7 +197,8 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
   return (
     <div className="ins">
       <div className="page-head ins-head">
-        <div>
+        <div className="title-row">
+          <Glyph3D kind="bars" />
           <h1>Insights</h1>
         </div>
       </div>

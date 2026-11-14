@@ -10,6 +10,7 @@ import {
 import { ApplicantModal, type PanelNav } from "./applicant-modal";
 import { Insights } from "./insights";
 import { Health } from "./health";
+import { Glyph3D } from "./glyph-3d";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
 import { SendModal } from "./send-modal";
 import { SettingsModal, type PurgeMode } from "./settings-modal";
@@ -70,10 +71,17 @@ function initials(email: string) {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || name[0].toUpperCase();
 }
 
-export function Crm() {
+export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // Tell the opening screen once the first load has finished (or failed).
+  const readyFired = useRef(false);
+  useEffect(() => {
+    if (loading || readyFired.current) return;
+    readyFired.current = true;
+    onReady?.();
+  }, [loading, onReady]);
   const [filters, setFilters] = useState({ q: "", role: "", rating: "" });
   const [openId, setOpenId] = useState<string | null>(null);
   const [send, setSend] = useState<{ id: string; kind: SendKind } | null>(null);
@@ -362,7 +370,19 @@ export function Crm() {
           <img className="brand-wordmark" src="/img/logo.png" alt="StartUp Link UniMelb" width={898} height={315} />
         </a>
         <span className="app-bar-slash" aria-hidden="true">/</span>
-        <span className="app-bar-crumb">Recruitment</span>
+        {/* Tool switcher: recruitment is the only tool for now; new tools get added here. */}
+        <Menu
+          label="Switch tool"
+          className="app-bar-crumb"
+          align="start"
+          items={[
+            { heading: "Tools" },
+            { label: "Recruitment", checked: true, onSelect: () => {} },
+          ]}
+        >
+          Recruitment
+          <Icon name="chevronUpDown" size={14} />
+        </Menu>
         <nav className="app-tabs" aria-label="Portal view">
           <button type="button" aria-current={view === "board" ? "page" : undefined} onClick={() => setView("board")}>
             <Icon name="board" />Board
@@ -461,7 +481,10 @@ export function Crm() {
         <div className="board-view" hidden={view !== "board"}>
           <div className="page-head">
             <div>
-              <h1>Pipeline</h1>
+              <div className="title-row">
+                <Glyph3D kind="network" />
+                <h1>Pipeline</h1>
+              </div>
               {filtering ? <p>{visible.length} of {applicants.length} shown</p> : null}
             </div>
             <dl className="pipe-stats">
