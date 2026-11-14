@@ -37,9 +37,9 @@ function useLayer(onEscape: () => void) {
 /* ---------------------------------------------------------------------------------------------
  * Modal: a centred dialog, or a sheet that slides in from the right (variant="sheet").
  * ------------------------------------------------------------------------------------------- */
-export function Modal({ title, subtitle, onClose, children, foot, variant = "dialog", size = "md" }: {
+export function Modal({ title, subtitle, onClose, children, foot, actions, variant = "dialog", size = "md" }: {
   title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; foot?: ReactNode;
-  variant?: "dialog" | "sheet"; size?: "sm" | "md" | "lg";
+  actions?: ReactNode; variant?: "dialog" | "sheet"; size?: "sm" | "md" | "lg";
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const labelId = useId();
@@ -65,6 +65,7 @@ export function Modal({ title, subtitle, onClose, children, foot, variant = "dia
             <h2 id={labelId}>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
+          {actions}
           <button className="ui-icon-btn" type="button" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
         </header>
         <div className="ui-panel-body">{children}</div>
@@ -73,6 +74,16 @@ export function Modal({ title, subtitle, onClose, children, foot, variant = "dia
     </div>,
     document.body,
   );
+}
+
+/** True when a keypress should be left alone by panel shortcuts: typing in a field, a dropdown
+ *  is open, a dialog sits on top, or a modifier key is held. */
+export function shortcutBlocked(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return true;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.("input, textarea, select, [contenteditable='true']")) return true;
+  if (document.querySelector(".ui-pop")) return true;
+  return document.querySelectorAll('[aria-modal="true"]').length > 1;
 }
 
 /* ---------------------------------------------------------------------------------------------

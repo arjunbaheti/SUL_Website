@@ -7,7 +7,7 @@ import {
   download, fmtDate, fmtDateTime, hasResume, rejectionKind, sentEmails, stamp, voteTally,
   type Applicant, type SendKind, type StageId,
 } from "@/lib/portal";
-import { ApplicantModal } from "./applicant-modal";
+import { ApplicantModal, type PanelNav } from "./applicant-modal";
 import { Insights } from "./insights";
 import { Health } from "./health";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
@@ -441,6 +441,10 @@ export function Crm() {
     ["Rejected", n((a) => a.status === "rejected")],
   ];
   const open = applicants.find((a) => a.id === openId);
+  // Panel navigation follows the board: stage by stage, newest activity first, current filters.
+  const order = STAGES.flatMap((stage) => visible.filter((a) => a.status === stage.id).sort((x, y) => (y.updatedAt || "").localeCompare(x.updatedAt || "")).map((a) => a.id));
+  const at = open ? order.indexOf(open.id) : -1;
+  const nav: PanelNav | undefined = at >= 0 ? { index: at, total: order.length, prev: order[at - 1], next: order[at + 1] } : undefined;
   const sending = send ? applicants.find((a) => a.id === send.id) : undefined;
   const filtering = !!(filters.q || filters.role || filters.rating);
   const teamOptions: SelectOption[] = [
@@ -654,6 +658,7 @@ export function Crm() {
           me={me}
           duplicates={dupesOf(open)}
           ratingMovesStage={settings.ratingMovesStage}
+          nav={nav}
           onClose={() => setOpenId(null)}
           onSaved={() => refreshIds([open.id])}
           onSendInvite={(id) => setSend({ id, kind: "invite" })}
