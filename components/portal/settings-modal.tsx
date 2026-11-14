@@ -27,13 +27,13 @@ const SAMPLE = { name: "Alex Chen", role: "Marketing" };
 const SAMPLE_LINK = "https://zcal.co/i/example";
 
 function Toggle({ checked, onChange, title, help }: {
-  checked: boolean; onChange: (v: boolean) => void; title: string; help: string;
+  checked: boolean; onChange: (v: boolean) => void; title: string; help?: string;
 }) {
   return (
     <label className="crm-toggle">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="crm-toggle-track" aria-hidden="true"><span /></span>
-      <span className="crm-toggle-text"><strong>{title}</strong><span>{help}</span></span>
+      <span className="crm-toggle-text"><strong>{title}</strong>{help ? <span>{help}</span> : null}</span>
     </label>
   );
 }
@@ -88,7 +88,7 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
       foot={
         <>
           <span className="crm-help" style={{ margin: 0 }}>
-            {meta.updatedAt ? <>Last saved {fmtDateTime(meta.updatedAt)}{meta.updatedBy ? " by " + meta.updatedBy : ""}</> : "Shared by all committee reviewers"}
+            {meta.updatedAt ? <>Last saved {fmtDateTime(meta.updatedAt)}{meta.updatedBy ? " by " + meta.updatedBy : ""}</> : null}
           </span>
           <span className="spacer" />
           <button className="ui-btn" type="button" onClick={close}>Cancel</button>
@@ -119,22 +119,11 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
               <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{EMAIL_LABEL[k]}</button>
             ))}
           </div>
-          <p className="crm-help">
-            {kind === "received"
-              ? "Sent automatically the moment someone submits the application form."
-              : kind === "reject"
-              ? "Sent to applicants rejected after an interview."
-              : kind === "rejectScreen"
-                ? "Sent to applicants rejected before an interview (screened out). The portal picks the right rejection automatically."
-                : <>Used as the starting text when someone clicks <strong>{SEND_META[kind].button}</strong>.</>}
-            {kind === "received" ? null : " You can still tweak each email before it goes out."}
-          </p>
           {kind === "received" ? (
             <Toggle
               checked={s.confirmationEnabled}
               onChange={(v) => setS((p) => ({ ...p, confirmationEnabled: v }))}
               title="Send this automatically when someone applies"
-              help="Turn off to stop confirmation emails (for example, if Gmail's daily limit is getting close)."
             />
           ) : null}
           <div className="crm-field">
@@ -182,7 +171,6 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
           <div className="crm-field">
             <label htmlFor="set-from">Sender name</label>
             <input id="set-from" type="text" maxLength={80} value={s.senderName} onChange={(e) => setS((p) => ({ ...p, senderName: e.target.value }))} />
-            <div className="crm-help">Shown as the &quot;From&quot; name in applicants&apos; inboxes. Emails still come from the club Gmail account.</div>
           </div>
           <div className="crm-field">
             <label htmlFor="set-reply">Reply-to address (optional)</label>
@@ -190,14 +178,12 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
               id="set-reply"
               type="email"
               maxLength={254}
-              placeholder="Leave blank to use the club Gmail"
+              placeholder="Blank = club Gmail"
               value={s.replyTo}
               aria-invalid={!replyOk}
               onChange={(e) => setS((p) => ({ ...p, replyTo: e.target.value }))}
             />
-            <div className="crm-help" style={!replyOk ? { color: "#ff8a8a" } : undefined}>
-              {replyOk ? "Where applicants' replies go, e.g. a People & Culture inbox." : "That doesn't look like an email address."}
-            </div>
+            {replyOk ? null : <div className="crm-help" style={{ color: "var(--red)" }}>That doesn&apos;t look like an email address.</div>}
           </div>
         </>
       ) : null}
@@ -208,26 +194,21 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
             checked={s.autoInvitedAfterSend}
             onChange={(v) => setS((p) => ({ ...p, autoInvitedAfterSend: v }))}
             title="Move to “Interview invited” after sending an invite"
-            help="When an invite is emailed to someone in Under review, move their card along automatically."
           />
           <Toggle
             checked={s.ratingMovesStage}
             onChange={(v) => setS((p) => ({ ...p, ratingMovesStage: v }))}
             title="Interview rating moves the applicant"
-            help="Rating Yes moves them to Offer, Maybe to Waitlist, and No to Rejected."
+            help="Yes → Offer · Maybe → Waitlist · No → Rejected"
           />
         </>
       ) : null}
 
       {tab === "data" ? (
         <>
-          <p className="crm-help" style={{ marginTop: 0 }}>
-            At the end of recruitment, keep a copy and then delete applicants&apos; personal data. Applicants only agreed to
-            their details being used for this recruitment round, so don&apos;t hold resumes longer than you need them.
-          </p>
           <div className="crm-data-step">
             <strong>1. Download a backup</strong>
-            <p>Saves every applicant, note and vote as JSON and CSV (files themselves aren&apos;t included).</p>
+            <p>JSON and CSV. Resume files aren&apos;t included.</p>
             <button className="ui-btn" type="button" onClick={() => { onExport(); setExported(true); }}>
               {exported ? "Downloaded · download again" : "Download backup"}
             </button>
@@ -235,9 +216,7 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
           <div className={"crm-data-step danger" + (exported ? "" : " is-locked")}>
             <strong>2. Delete data</strong>
             <p>
-              <b>Delete files only</b> removes every resume and attachment but keeps the board.{" "}
-              <b>Delete everything</b> also removes all {applicantCount} applicant{applicantCount === 1 ? "" : "s"}, their notes and votes.
-              This can&apos;t be undone.
+              <b>Files only</b> keeps the board. <b>Everything</b> also removes all {applicantCount} applicant{applicantCount === 1 ? "" : "s"}. Can&apos;t be undone.
             </p>
             <div className="crm-field" style={{ marginBottom: "0.6rem" }}>
               <label htmlFor="set-confirm">Type DELETE to confirm</label>

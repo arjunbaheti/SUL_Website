@@ -90,7 +90,6 @@ export function PortalGate() {
             {/* eslint-disable-next-line @next/next/no-img-element -- tiny static brand mark */}
             <img className="auth-mark" src="/icon.png" alt="" width={40} height={40} />
             <h1>Committee portal</h1>
-            <p className="auth-sub">StartUp Link UniMelb · committee and executives only</p>
             <form onSubmit={onSubmit}>
               <label className="ui-label" htmlFor="username">Email</label>
               <input className="ui-input" type="email" id="username" name="username" required autoComplete="username" autoCapitalize="none" spellCheck={false} />

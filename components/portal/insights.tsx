@@ -109,7 +109,7 @@ function Daily({ applicants, now }: { applicants: Applicant[]; now: number }) {
       <div className="ins-daily-readout" aria-live="polite">
         {h
           ? <><strong>{h.n}</strong> application{h.n === 1 ? "" : "s"} on {h.date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</>
-          : <>Busiest day: <strong>{peak.n}</strong> on {peak.date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}. Hover a bar for that day.</>}
+          : <>Busiest day: <strong>{peak.n}</strong> on {peak.date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}</>}
       </div>
       <div className="ins-daily-plot" role="img" aria-label={`Applications per day over the last ${series.length} days, peaking at ${peak.n}`} onMouseLeave={() => setHover(null)}>
         <div className="ins-gridline" style={{ bottom: "100%" }}><span>{max}</span></div>
@@ -182,7 +182,7 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
   }, [applicants, now]);
 
   if (!d.total) {
-    return <div className="state is-boxed"><h3>No data yet</h3><p>Insights fill in as applications arrive.</p></div>;
+    return <div className="state is-boxed"><h3>No data yet</h3></div>;
   }
 
   const delta = d.thisWeek - d.lastWeek;
@@ -198,7 +198,6 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
       <div className="page-head ins-head">
         <div>
           <h1>Insights</h1>
-          <p>Volume, funnel, timing and reviewer workload across {d.total} applicant{d.total === 1 ? "" : "s"}</p>
         </div>
       </div>
       <div className="ins-tiles">
@@ -218,13 +217,11 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
 
       <section className="ins-card">
         <h3>Recruitment funnel</h3>
-        <p className="ins-sub">How far everyone got, including people later rejected. Percentages are of all applicants.</p>
         <Bars rows={d.funnel} total={d.total} />
       </section>
 
       <section className="ins-card">
-        <h3>Time between steps</h3>
-        <p className="ins-sub">Median, from the activity log.</p>
+        <h3>Time between steps <small className="h-note">medians</small></h3>
         <dl className="ins-timing">
           <div><dt>Applied → invite sent</dt><dd>{fmtDays(d.timing.toInvite)}<small>{d.timing.nInvite} people</small></dd></div>
           <div><dt>Invite sent → booked</dt><dd>{fmtDays(d.timing.toBook)}<small>{d.timing.nBook} people</small></dd></div>
@@ -244,7 +241,7 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
 
       <section className="ins-card">
         <h3>Degree</h3>
-        <Bars rows={d.degrees} total={d.total} note="Top degrees as typed by applicants; the rest are grouped as Other." />
+        <Bars rows={d.degrees} total={d.total} />
       </section>
 
       <section className="ins-card ins-wide">
