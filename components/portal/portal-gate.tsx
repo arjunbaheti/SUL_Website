@@ -88,7 +88,7 @@ export function PortalGate({ fontClass }: { fontClass: string }) {
         <div className="auth" aria-busy={state === "checking"}>
           <div className="auth-card" hidden={state === "checking"}>
             {/* eslint-disable-next-line @next/next/no-img-element -- tiny static brand mark */}
-            <img className="auth-mark" src="/icon.png" alt="" width={40} height={40} />
+            <img className="auth-mark brand-wordmark" src="/img/logo.png" alt="StartUp Link UniMelb" width={898} height={315} />
             <h1>Committee portal</h1>
             <form onSubmit={onSubmit}>
               <label className="ui-label" htmlFor="username">Email</label>
