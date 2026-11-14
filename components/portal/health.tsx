@@ -121,7 +121,7 @@ function Funnel({ counts, selected, onSelect }: { counts: number[]; selected: nu
   const w = (n: number) => Math.max(4, (n / top) * 100);
   const focus = hover ?? selected;
   return (
-    <div className="fn" onMouseLeave={() => setHover(null)}>
+    <div className="funnel" onMouseLeave={() => setHover(null)}>
       {counts.map((n, i) => {
         const next = counts[i + 1];
         const lost = next === undefined ? 0 : n - next;
