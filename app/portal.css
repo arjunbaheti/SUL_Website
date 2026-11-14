@@ -1247,3 +1247,4 @@ i.v, span.v { display: inline-block; width: 7px; height: 7px; border-radius: 50%
 .crm-board::-webkit-scrollbar { height: 10px; }
 .crm-board::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 3px solid var(--bg); }
 .crm-board::-webkit-scrollbar-track { background: transparent; }
+.h-note { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--subtle); letter-spacing: 0; }

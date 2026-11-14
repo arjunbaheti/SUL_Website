@@ -74,7 +74,7 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
 
   return (
     <div className="crm-field">
-      <label>Screening vote · should they get an interview?</label>
+      <label>Screening vote</label>
       <div className="rating-btns">
         {(["yes", "maybe", "no"] as const).map((v) => (
           <button
@@ -87,7 +87,7 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
         ))}
       </div>
       <div className="crm-votes">
-        {votes.length === 0 ? <span className="crm-help" style={{ margin: 0 }}>No votes yet. Each reviewer gets one vote; click yours again to clear it.</span> : (
+        {votes.length === 0 ? <span className="crm-help" style={{ margin: 0 }}>No votes yet</span> : (
           <>
             <span className="crm-vote-tally">{t.yes} yes · {t.maybe} maybe · {t.no} no</span>
             {votes.map((v) => (
@@ -103,12 +103,12 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
           <Icon name="alert" size={14} />
           <span>Conflict of interest declared by{" "}
           {conflicts.map((c) => (c.reviewer === me ? "you" : c.reviewer)).join(", ")}.
-          {" "}{conflicts.length === 1 ? "That vote isn" : "Those votes aren"}&apos;t counted. Consider leaving the decision and the interview to someone else.</span>
+          {" "}{conflicts.length === 1 ? "That vote isn" : "Those votes aren"}&apos;t counted.</span>
         </div>
       ) : null}
       <label className="crm-coi">
         <input type="checkbox" checked={iConflict} disabled={saving || !me} onChange={(e) => toggleConflict(e.target.checked)} />
-        <span><strong>I know this person</strong> (friend, partner, housemate, family…). Declares a conflict of interest: your vote is removed and the rest of the committee can see it.</span>
+        <span><strong>I know this person</strong> (conflict of interest)</span>
       </label>
     </div>
   );
@@ -359,7 +359,6 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
         <div className="crm-field"><label>Phone</label><input readOnly value={a.phone} /></div>
         <div className="crm-field"><label>Team applied for</label><input readOnly value={a.role} /></div>
       </div>
-      <p className="crm-help" style={{ marginTop: "-0.4rem" }}>Name, email, phone and team come from the applicant&apos;s submission and can&apos;t be edited.</p>
       <div className="crm-field">
         <label>Zcal link</label>
         <div className="crm-inline">
@@ -368,7 +367,6 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
           </div>
           <button className="ui-btn" type="button" onClick={sendInvite}><Icon name="mail" />Send invite</button>
         </div>
-        <div className="crm-help">This link goes into their interview invite. It saves automatically. <strong>Send invite</strong> emails them this link.</div>
       </div>
       <div className="crm-field">
         <label>Stage</label>
@@ -410,7 +408,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
           </>
         ) : (
           <p className="crm-help" style={{ margin: 0 }}>
-            Interview notes and the rating unlock once this applicant moves to <strong>Interview booked</strong> or later.
+            Unlocks at <strong>Interview booked</strong>.
           </p>
         )}
       </div>

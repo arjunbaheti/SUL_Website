@@ -177,7 +177,7 @@ function Daily({ days }: { days: { date: Date; started: number; submitted: numbe
         <div className="ins-daily-readout" aria-live="polite">
           {h
             ? <><strong>{h.started}</strong> started · <strong>{h.submitted}</strong> submitted{h.started ? <> · <strong>{pct(h.submitted, h.started)}</strong> completed</> : null} on {h.date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</>
-            : <><strong>{total}</strong> started and <strong>{done}</strong> submitted over {days.length} days. Hover a day for detail.</>}
+            : <><strong>{total}</strong> started and <strong>{done}</strong> submitted over {days.length} days</>}
         </div>
         <Segmented
           size="sm"
@@ -247,7 +247,7 @@ function Heatmap({ visits }: { visits: Visit[] }) {
       <div className="ins-daily-readout" aria-live="polite">
         {hv
           ? <><strong>{hv.n}</strong> started on {WEEKDAYS[hv.d]} between {hourLabel(hv.hr)} and {hourLabel((hv.hr + 1) % 24)}</>
-          : busiest?.n ? <>Busiest: <strong>{WEEKDAYS[busiest.d]} {hourLabel(busiest.hr)}</strong> ({busiest.n} started). Hover a cell for detail.</> : "No starts in this period."}
+          : busiest?.n ? <>Busiest: <strong>{WEEKDAYS[busiest.d]} {hourLabel(busiest.hr)}</strong> ({busiest.n} started)</> : "No starts in this period."}
       </div>
       <div className="hm-grid" role="img" aria-label="Applications started by weekday and hour" onMouseLeave={() => setHover(null)}>
         {grid.map((row, d) => (
@@ -370,10 +370,6 @@ export function Health() {
     <div className="page-head ins-head">
       <div>
         <h1>Application health</h1>
-        <p>
-          How people get on with the application form: where they stop and what blocks them.
-          {d.since ? <> Tracking since {fmtDate(d.since)}.</> : null}
-        </p>
       </div>
       <div className="page-head-actions">
         <button
@@ -400,7 +396,7 @@ export function Health() {
         {head}
         <div className="state is-boxed ins-wide">
           <h3>One-time database setup needed</h3>
-          <p>Run <code>supabase/migrations/2026-11-14-form-health.sql</code> in Supabase → SQL Editor, then refresh. Tracking starts from then on.</p>
+          <p>Run <code>supabase/migrations/2026-11-14-form-health.sql</code> in Supabase → SQL Editor, then refresh.</p>
         </div>
       </div>
     );
@@ -412,7 +408,7 @@ export function Health() {
     return (
       <div className="ins">
         {head}
-        <div className="state is-boxed ins-wide"><h3>No form activity yet</h3><p>This fills in as soon as people open the application form.</p></div>
+        <div className="state is-boxed ins-wide"><h3>No form activity yet</h3></div>
       </div>
     );
   }
@@ -465,12 +461,7 @@ export function Health() {
       </div>
 
       <section className="ins-card hl-funnel-card">
-        <div className="hl-card-head">
-          <div>
-            <h3>Form funnel</h3>
-            <p className="ins-sub">Furthest step each visit reached. Click a step to see who stopped there.</p>
-          </div>
-        </div>
+        <h3>Form funnel</h3>
         {nVisits ? <Funnel counts={d.counts} selected={step} onSelect={setStep} /> : <p className="ins-sub">No visits in this period.</p>}
       </section>
 
@@ -478,11 +469,6 @@ export function Health() {
         <div className="hl-card-head">
           <div>
             <h3>{lostTitle}</h3>
-            <p className="ins-sub">
-              {step === null
-                ? "The last thing filled in by people who started and then left (idle 30+ minutes)."
-                : "The last field they filled in before leaving."}
-            </p>
           </div>
           {step !== null ? <button className="ui-btn ui-btn-ghost" type="button" onClick={() => setStep(null)}>Show all</button> : null}
         </div>
@@ -501,22 +487,17 @@ export function Health() {
 
       <section className="ins-card">
         <h3>What blocks submit</h3>
-        <p className="ins-sub">
-          Fields that stopped someone pressing submit. {d.blocked} {d.blocked === 1 ? "person was" : "people were"} blocked at least once;{" "}
-          {d.blockedThenSubmitted} fixed it and submitted.
-        </p>
+        {d.blocked ? <p className="ins-sub">{d.blocked} blocked · {d.blockedThenSubmitted} fixed it and submitted</p> : null}
         {d.blockers.length ? <Bars rows={d.blockers} total={d.blocked} /> : <p className="ins-sub">No blocked submissions.</p>}
       </section>
 
       <section className="ins-card">
         <h3>When people apply</h3>
-        <p className="ins-sub">Applications started, by weekday and hour.</p>
         <Heatmap visits={d.visits} />
       </section>
 
       <section className="ins-card">
-        <h3>Timing &amp; reliability</h3>
-        <p className="ins-sub">Medians across visits.</p>
+        <h3>Timing &amp; reliability <small className="h-note">medians</small></h3>
         <dl className="ins-timing">
           <div><dt>Time to finish an application</dt><dd>{fmtMins(d.timeToSubmit)}<small>{nSubmitted} submitted</small></dd></div>
           <div><dt>Time spent before giving up</dt><dd>{fmtMins(d.timeBeforeLeaving)}<small>{nDropped} dropped off</small></dd></div>
@@ -529,7 +510,6 @@ export function Health() {
 
       <section className="ins-card">
         <h3>Desktop vs mobile</h3>
-        <p className="ins-sub">Completion rate of people who started, in this period.</p>
         <div className="hl-devices">
           {d.devices.map((r) => {
             const rate = r.started ? r.submitted / r.started : 0;

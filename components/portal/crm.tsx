@@ -459,10 +459,7 @@ export function Crm() {
           <div className="page-head">
             <div>
               <h1>Pipeline</h1>
-              <p>
-                {filtering ? `${visible.length} of ${applicants.length} applicants` : `${applicants.length} applicant${applicants.length === 1 ? "" : "s"}`}
-                <span className="live-dot" aria-hidden="true" /> Live
-              </p>
+              {filtering ? <p>{visible.length} of {applicants.length} shown</p> : null}
             </div>
           </div>
 
@@ -513,7 +510,6 @@ export function Crm() {
           {applicants.length === 0 ? (
             <div className="state is-boxed">
               <h3>No applicants yet</h3>
-              <p>Applications land here automatically as soon as someone submits the form on the Recruitment page.</p>
               <a className="ui-btn" href="/recruitment-demo" target="_blank" rel="noopener">Open the application form <Icon name="external" /></a>
             </div>
           ) : (

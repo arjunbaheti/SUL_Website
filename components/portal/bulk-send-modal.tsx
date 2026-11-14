@@ -88,7 +88,6 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
       foot={
         phase === "review" ? (
           <>
-            <span className="crm-help" style={{ margin: 0 }}>Uses the templates in Settings.</span>
             <span className="spacer" />
             <button className="ui-btn" type="button" onClick={onClose}>Cancel</button>
             <button className="ui-btn ui-btn-primary" type="button" disabled={!toSend.length} onClick={run}>
@@ -97,7 +96,7 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
           </>
         ) : phase === "sending" ? (
           <>
-            <span className="crm-help" style={{ margin: 0 }}>Keep this tab open until it finishes. Emails are spaced out to stay out of spam folders.</span>
+            <span className="crm-help" style={{ margin: 0 }}>Keep this tab open until it finishes.</span>
             <span className="spacer" />
             <button className="ui-btn" type="button" onClick={() => { stop.current = true; }}>Stop</button>
           </>
