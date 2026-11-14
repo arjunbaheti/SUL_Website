@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/site";
 import { Header, HeroTitle, ShortFooter, TeamGrid } from "@/components/chrome";
 
-export const metadata: Metadata = {
-  title: "Recruitment opens soon",
-  description: "Committee recruitment at StartUp Link UniMelb opens in late February 2027.",
-};
+export const metadata: Metadata = pageMeta(
+  "Committee recruitment",
+  "Join the StartUp Link UniMelb committee. Recruitment for the University of Melbourne's startup club opens in late February 2027 across Events, Projects, External Relations and Marketing.",
+  "/recruitment",
+);
 
 export default function RecruitmentPage() {
   return (

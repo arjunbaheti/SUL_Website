@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/site";
 import { BgFlow, Header, Ribbon, ShortFooter, Stats } from "@/components/chrome";
 import { IndexRows } from "@/components/site/index-rows";
 
-export const metadata: Metadata = { title: "Partner with us" };
+export const metadata: Metadata = pageMeta(
+  "Partner with UniMelb's student startup club",
+  "Hire entrepreneurial University of Melbourne students. Partner with StartUp Link UniMelb to run workshops, meet members in person and post startup internships and graduate roles.",
+  "/partners",
+);
 
 export default function PartnersPage() {
   return (

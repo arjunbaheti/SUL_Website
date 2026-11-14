@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/site";
 import { BgFlow, Header, ShortFooter } from "@/components/chrome";
 
-export const metadata: Metadata = { title: "Events" };
+export const metadata: Metadata = pageMeta(
+  "Startup events & workshops for UniMelb students",
+  "What's on at StartUp Link UniMelb: startup networking nights, founder talks, entrepreneurship workshops and socials for University of Melbourne students.",
+  "/events",
+);
 
 export default function EventsPage() {
   return (

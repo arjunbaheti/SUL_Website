@@ -2251,3 +2251,22 @@ p { line-height: 1.6; text-wrap: pretty; }
     color: var(--sul-on-primary) !important;
   }
 }
+
+/* ---------- Home: hero eyebrow + FAQ ---------- */
+.faq-wrap { max-width: 760px; }
+.faq-list { display: flex; flex-direction: column; border-top: 1px solid var(--sul-border); }
+.faq-item { border-bottom: 1px solid var(--sul-border); }
+.faq-item summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 1.25rem 0.25rem; list-style: none; cursor: pointer;
+  font-size: 1.12rem; font-weight: 500; color: var(--sul-ink); letter-spacing: -0.01em;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after {
+  content: ""; flex: none; width: 10px; height: 10px; margin-right: 4px;
+  border-right: 1.5px solid var(--sul-muted); border-bottom: 1.5px solid var(--sul-muted);
+  transform: rotate(45deg) translateY(-3px); transition: transform 0.2s ease;
+}
+.faq-item[open] summary::after { transform: rotate(-135deg) translateY(-3px); }
+.faq-item summary:hover { color: var(--sul-primary); }
+.faq-item p { margin: 0 0 1.4rem; padding: 0 0.25rem; max-width: 64ch; color: var(--sul-muted); font-size: 1.02rem; line-height: 1.6; }

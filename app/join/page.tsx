@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/site";
 import { BgFlow, Header, ShortFooter } from "@/components/chrome";
 import { JoinForm } from "@/components/join/join-form";
 
-export const metadata: Metadata = { title: "Join" };
+export const metadata: Metadata = pageMeta(
+  "Join the UniMelb startup club",
+  "Become a member of StartUp Link UniMelb, the University of Melbourne's startup and entrepreneurship club, through UMSU.",
+  "/join",
+);
 
 export default function JoinPage() {
   return (

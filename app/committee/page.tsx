@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/site";
 import { BgFlow, Header, ShortFooter } from "@/components/chrome";
 import { COMMITTEE, type Office } from "@/lib/content";
 
-export const metadata: Metadata = { title: "Committee" };
+export const metadata: Metadata = pageMeta(
+  "Committee",
+  "Meet the StartUp Link UniMelb committee: the University of Melbourne students running Melbourne's student startup club, term by term.",
+  "/committee",
+);
 
 function OfficeBlock({ role, name }: { role: string; name: Office }) {
   const names = Array.isArray(name) ? name : [name || "TBD"];
