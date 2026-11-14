@@ -45,12 +45,6 @@ applicant ──► /recruitment-demo ──► Supabase  ◄── /portal ◄�
 - Answers to the two main questions are capped at 200 words (+5 slack) in the form.
 - The form logs anonymous progress events (field names only, never answers) to `form_events` for the portal's **Health** tab: how many people start, where they drop off, what blocks submit. Setup: run `supabase/migrations/2026-11-14-form-health.sql` once. Clear test data from the Health tab's `⋯` menu. `supabase/migrations/2026-11-15-security.sql` caps tracking at 150 events per visit and 600 per minute.
 
-## Committee sign-in (two-factor)
-
-Every committee member signs in with their password **and** a 6-digit code from an authenticator app (Google Authenticator, 1Password, Authy…). The first sign-in shows a QR code to set it up. The database enforces it: `is_committee()` only allows sessions that passed two-factor (`aal2`), so a leaked password alone can't read applicant data.
-
-Lost phone: Supabase → Authentication → Users → the member → delete their MFA factor. They set it up again on next sign-in.
-
 ## Reviewer shortcuts (applicant panel)
 
 `A` / `←` previous applicant, `D` / `→` next (same order as the board, respecting filters), `1` / `2` / `3` vote Yes / Maybe / No (press again to clear), `Esc` close, `/` search on the board.
