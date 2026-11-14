@@ -14,7 +14,7 @@ import { Icon } from "./icons";
 const layers: number[] = [];
 let layerSeq = 0;
 
-function useLayer(onEscape: () => void) {
+export function useLayer(onEscape: () => void) {
   const esc = useRef(onEscape);
   useEffect(() => { esc.current = onEscape; });
   useEffect(() => {

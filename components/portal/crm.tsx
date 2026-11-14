@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import {
   RATINGS, SEND_META, STAGES, STAGE_BY_ID, ago, applicantFromRow, csvCell,
@@ -17,6 +17,7 @@ import { SettingsModal, type PurgeMode } from "./settings-modal";
 import { DEFAULT_SETTINGS, loadSettings, type PortalSettings, type SettingsMeta } from "@/lib/settings";
 import { Icon } from "./icons";
 import { Menu, Select, Ticker, toast, useTheme, type SelectOption } from "./ui";
+import { CommandMenu, type Command } from "./command-menu";
 import { AvatarStack, BoardSkeleton, HoverPreview, firstName, useFlip, usePeek, usePresence } from "./board-extras";
 
 // The committee recruitment board: the app shell (top bar), the pipeline board and the
@@ -83,6 +84,104 @@ function initials(email: string) {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || name[0].toUpperCase();
 }
 
+const COLUMN_PAGE = 40;
+
+type CardActions = {
+  open: (id: string, rect: DOMRect) => void;
+  toggle: (id: string) => void;
+  peekEnter: (id: string, el: HTMLElement) => void;
+  peekLeave: () => void;
+  dragStart: (id: string) => void;
+  dragEnd: () => void;
+  send: (a: Applicant, kind: SendKind) => void;
+};
+
+/** One applicant card. Memoised: it only re-renders when its own data or state changes. */
+const BoardCard = memo(function BoardCard({ a, selectMode, isSel, isDragging, viaSecond, dupes, viewers, actions }: {
+  a: Applicant; selectMode: boolean; isSel: boolean; isDragging: boolean; viaSecond: boolean; dupes: number;
+  viewers: string; actions: React.RefObject<CardActions>;
+}) {
+  const quick = quickSend(a);
+  const sent = sentEmails(a);
+  const sentNow = quick ? sent[quick === "rejectScreen" ? "reject" : quick] : undefined;
+  const t = voteTally(a.votes);
+  const watching = viewers ? viewers.split(",") : [];
+  const activate = (el: HTMLElement) => { if (selectMode) actions.current.toggle(a.id); else actions.current.open(a.id, el.getBoundingClientRect()); };
+  return (
+    <div
+      className={"crm-card" + (isDragging ? " dragging" : "") + (isSel ? " selected" : "")}
+      draggable={!selectMode}
+      data-id={a.id}
+      data-flip={a.id}
+      onMouseEnter={(e) => actions.current.peekEnter(a.id, e.currentTarget)}
+      onMouseLeave={() => actions.current.peekLeave()}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selectMode ? isSel : undefined}
+      onClick={(e) => { actions.current.peekLeave(); activate(e.currentTarget); }}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(e.currentTarget); } }}
+      onDragStart={(e) => { e.dataTransfer.setData("text/plain", a.id); e.dataTransfer.effectAllowed = "move"; actions.current.dragStart(a.id); }}
+      onDragEnd={() => actions.current.dragEnd()}
+    >
+      <div className="card-top">
+        {selectMode ? <span className={"ui-check" + (isSel ? " is-on" : "")} aria-hidden="true"><Icon name="check" size={12} /></span> : null}
+        <span className="cn">{a.name || "Unnamed"}</span>
+        {a.secondChoiceFlag ? <span className="card-flag" title={"Flagged for 2nd choice: " + a.roleSecondary}><Icon name="star" size={13} /></span> : null}
+        {hasResume(a) ? <span className="card-file" title="Resume attached"><Icon name="paperclip" size={13} /></span> : null}
+      </div>
+      {a.role ? (
+        <div className="cr">
+          {viaSecond ? <>{a.roleSecondary} <span className="crm-tag">2nd choice</span></> : a.role}
+        </div>
+      ) : null}
+      <div className="crm-badges">
+        {a.votes.length ? (
+          <span className="crm-badge votes" title={a.votes.map((v) => v.reviewer + ": " + v.vote).join("\n")}>
+            {t.yes ? <><i className="v yes" />{t.yes}</> : null}
+            {t.maybe ? <><i className="v maybe" />{t.maybe}</> : null}
+            {t.no ? <><i className="v no" />{t.no}</> : null}
+          </span>
+        ) : null}
+        {sent.invite ? <span className="crm-badge sent" title={"Invite emailed " + fmtDateTime(sent.invite)}><Icon name="mail" size={12} />Invite · {ago(sent.invite)}</span> : null}
+        {sent.offer ? <span className="crm-badge sent" title={"Offer emailed " + fmtDateTime(sent.offer)}><Icon name="mail" size={12} />Offer · {ago(sent.offer)}</span> : null}
+        {sent.reject ? <span className="crm-badge sent" title={"Rejection emailed " + fmtDateTime(sent.reject)}><Icon name="mail" size={12} />Rejection · {ago(sent.reject)}</span> : null}
+        {a.conflicts.length ? (
+          <span className="crm-badge coi" title={"Knows this applicant (vote not counted):\n" + a.conflicts.map((c) => c.reviewer).join("\n")}>
+            <Icon name="alert" size={12} />Conflict{a.conflicts.length > 1 ? " ×" + a.conflicts.length : ""}
+          </span>
+        ) : null}
+        {dupes ? <span className="crm-badge dup" title="Another application uses this email">Duplicate</span> : null}
+      </div>
+      <div className="cmeta">
+        <span>{fmtDate(a.createdAt)}</span>
+        <span className="spacer" />
+        <AvatarStack names={watching} size={18} max={2} label={watching.join(", ") + " viewing"} />
+        {a.rating ? <RatingPill rating={a.rating} /> : null}
+      </div>
+      {quick && !sentNow && !selectMode ? (
+        <button className="ui-btn is-block crm-card-action" type="button" onClick={(e) => { e.stopPropagation(); actions.current.send(a, quick); }} onKeyDown={(e) => e.stopPropagation()}>
+          <Icon name="mail" />{SEND_META[quick].button}
+        </button>
+      ) : null}
+    </div>
+  );
+});
+
+/** End of a long column: loads the next batch when scrolled into view (or on click). */
+function MoreCards({ remaining, onMore }: { remaining: number; onMore: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const more = useRef(onMore);
+  useEffect(() => { more.current = onMore; });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) more.current(); }, { root: el.closest(".crm-col-body"), rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return <button ref={ref} type="button" className="crm-more" onClick={() => more.current()}>Show {Math.min(remaining, COLUMN_PAGE)} more</button>;
+}
+
 export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +223,24 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const searchRef = useRef<HTMLInputElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const [origin, setOrigin] = useState<DOMRect | null>(null);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  // Long columns draw COLUMN_PAGE cards at a time and add more as you scroll to the bottom.
+  const [limits, setLimits] = useState<Partial<Record<StageId, number>>>({});
+  // Cards are memoised; they reach the board's handlers through this ref so hovering or typing
+  // elsewhere doesn't re-render every card.
+  const cardActions = useRef<CardActions>({ open: () => {}, toggle: () => {}, peekEnter: () => {}, peekLeave: () => {}, dragStart: () => {}, dragEnd: () => {}, send: () => {} });
+
+  // ⌘K / Ctrl+K opens the command menu from anywhere (pressing it again closes it).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   // Live connection: "down" shows a Reconnecting pill in the top bar.
   const [connection, setConnection] = useState<"ok" | "down">("ok");
   // After a failed load, retry automatically with a growing delay (5s, 10s, 20s, max 30s).
@@ -309,6 +426,17 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   useEffect(() => {
+    cardActions.current = {
+      open: (id, rect) => { peekLeave(); setOrigin(rect); setOpenId(id); },
+      toggle: (id) => toggle(id),
+      peekEnter,
+      peekLeave,
+      dragStart: (id) => { peekLeave(); setDragging(id); },
+      dragEnd: () => setDragging(null),
+      send: (a, kind) => openSend(a, kind),
+    };
+  });
+  useEffect(() => {
     shortcuts.current = {
       reload: () => { if (view === "board") reload(); },
       toggleSelect: () => { if (view !== "board") return; if (selectMode) { setSelectMode(false); setSelected(new Set()); } else setSelectMode(true); },
@@ -480,17 +608,22 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           <Icon name="chevronUpDown" size={14} />
         </Menu>
         <nav className="app-tabs" aria-label="Portal view">
-          <button type="button" aria-current={view === "board" ? "page" : undefined} onClick={() => setView("board")}>
-            <Icon name="board" />Board
+          <button type="button" aria-label="Board" aria-current={view === "board" ? "page" : undefined} onClick={() => setView("board")}>
+            <Icon name="board" /><span className="tab-label">Board</span>
           </button>
-          <button type="button" aria-current={view === "insights" ? "page" : undefined} onClick={() => { exitSelect(); setView("insights"); }}>
-            <Icon name="chart" />Insights
+          <button type="button" aria-label="Insights" aria-current={view === "insights" ? "page" : undefined} onClick={() => { exitSelect(); setView("insights"); }}>
+            <Icon name="chart" /><span className="tab-label">Insights</span>
           </button>
-          <button type="button" aria-current={view === "health" ? "page" : undefined} onClick={() => { exitSelect(); setView("health"); }}>
-            <Icon name="pulse" />Health
+          <button type="button" aria-label="Health" aria-current={view === "health" ? "page" : undefined} onClick={() => { exitSelect(); setView("health"); }}>
+            <Icon name="pulse" /><span className="tab-label">Health</span>
           </button>
         </nav>
         <div className="app-bar-end">
+          <button className="cmd-trigger" type="button" aria-label="Search and commands" onClick={() => setCmdOpen(true)}>
+            <Icon name="search" size={14} />
+            <span>Search</span>
+            <kbd>⌘K</kbd>
+          </button>
           {connection === "down" ? (
             <span className="conn-pill" role="status"><span className="conn-dot" aria-hidden="true" />Reconnecting…</span>
           ) : null}
@@ -568,6 +701,27 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const sending = send ? applicants.find((a) => a.id === send.id) : undefined;
   const filtering = !!(filters.q || filters.role || filters.rating);
   const myQueue = applicants.filter((a) => needsMyVote(a, me)).length;
+
+  const commands: Command[] = [
+    { id: "v:board", group: "Go to", label: "Board", icon: "board", keywords: "pipeline kanban", run: () => setView("board") },
+    { id: "v:insights", group: "Go to", label: "Insights", icon: "chart", keywords: "stats analytics", run: () => { exitSelect(); setView("insights"); } },
+    { id: "v:health", group: "Go to", label: "Application health", icon: "pulse", keywords: "form funnel drop off", run: () => { exitSelect(); setView("health"); } },
+    ...(open ? STAGES.filter((st) => st.id !== open.status).map((st): Command => ({
+      id: "m:" + st.id, group: `Move ${open.name || "applicant"}`, label: "Move to " + st.label, dot: st.color, keywords: "stage status",
+      run: () => { const id = open.id; setOpenId(null); setOrigin(null); moveTo(id, st.id); },
+    })) : []),
+    { id: "f:mine", group: "Filter", label: "Needs my vote", icon: "checkSquare", keywords: "screening queue", run: () => { setView("board"); setFilter("rating", "needs-my-vote"); } },
+    ...(filtering ? [{ id: "f:clear", group: "Filter", label: "Clear filters", icon: "x" as const, run: () => setFilters({ q: "", role: "", rating: "" }) }] : []),
+    { id: "a:refresh", group: "Actions", label: "Refresh", icon: "refresh", hint: <kbd>R</kbd>, run: () => { reload(); } },
+    { id: "a:select", group: "Actions", label: selectMode ? "Exit selection" : "Select applicants", icon: "checkSquare", hint: <kbd>S</kbd>, keywords: "bulk", run: () => { setView("board"); if (selectMode) exitSelect(); else setSelectMode(true); } },
+    { id: "a:csv", group: "Actions", label: "Export CSV", icon: "download", keywords: "download spreadsheet", run: exportCSV },
+    { id: "a:json", group: "Actions", label: "Export JSON backup", icon: "download", keywords: "download", run: exportJSON },
+    { id: "a:settings", group: "Actions", label: "Settings", icon: "sliders", keywords: "emails templates sender", run: async () => { await refreshSettings(); setSettingsOpen(true); } },
+    { id: "t:light", group: "Appearance", label: "Light theme", icon: "sun", keywords: "mode", run: () => setTheme("light") },
+    { id: "t:dark", group: "Appearance", label: "Dark theme", icon: "moon", keywords: "mode", run: () => setTheme("dark") },
+    { id: "t:system", group: "Appearance", label: "Match system theme", icon: "monitor", keywords: "mode auto", run: () => setTheme("system") },
+    { id: "a:signout", group: "Account", label: "Sign out", icon: "logOut", keywords: "log out", run: () => { portalClient().auth.signOut(); } },
+  ];
   const teamOptions: SelectOption[] = [
     { value: "", label: "All teams" },
     ...roles.map((r) => ({ value: r, label: r, group: "Includes 2nd choice" })),
@@ -685,74 +839,25 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
                       onDrop={(e) => { e.preventDefault(); setDropTarget(null); setDragging(null); moveTo(e.dataTransfer.getData("text/plain"), stage.id); }}
                     >
                       {items.length === 0 ? <div className="crm-col-empty">{selectMode ? "Empty" : "Drop here"}</div> : null}
-                      {items.map((a) => {
-                        const quick = quickSend(a);
-                        const sent = sentEmails(a);
-                        const sentNow = quick ? sent[quick === "rejectScreen" ? "reject" : quick] : undefined;
-                        const t = voteTally(a.votes);
-                        const dupes = dupesOf(a).length;
-                        const viaSecond = filters.role && a.role !== filters.role && a.roleSecondary === filters.role;
-                        const isSel = selected.has(a.id);
-                        return (
-                          <div
-                            key={a.id}
-                            className={"crm-card" + (dragging === a.id ? " dragging" : "") + (isSel ? " selected" : "")}
-                            draggable={!selectMode}
-                            data-id={a.id}
-                            data-flip={a.id}
-                            onMouseEnter={(e) => peekEnter(a.id, e.currentTarget)}
-                            onMouseLeave={peekLeave}
-                            role="button"
-                            tabIndex={0}
-                            aria-pressed={selectMode ? isSel : undefined}
-                            onClick={(e) => { peekLeave(); if (selectMode) toggle(a.id); else { setOrigin(e.currentTarget.getBoundingClientRect()); setOpenId(a.id); } }}
-                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (selectMode) toggle(a.id); else { setOrigin(e.currentTarget.getBoundingClientRect()); setOpenId(a.id); } } }}
-                            onDragStart={(e) => { peekLeave(); e.dataTransfer.setData("text/plain", a.id); e.dataTransfer.effectAllowed = "move"; setDragging(a.id); }}
-                            onDragEnd={() => setDragging(null)}
-                          >
-                            <div className="card-top">
-                              {selectMode ? <span className={"ui-check" + (isSel ? " is-on" : "")} aria-hidden="true"><Icon name="check" size={12} /></span> : null}
-                              <span className="cn">{a.name || "Unnamed"}</span>
-                              {a.secondChoiceFlag ? <span className="card-flag" title={"Flagged for 2nd choice: " + a.roleSecondary}><Icon name="star" size={13} /></span> : null}
-                              {hasResume(a) ? <span className="card-file" title="Resume attached"><Icon name="paperclip" size={13} /></span> : null}
-                            </div>
-                            {a.role ? (
-                              <div className="cr">
-                                {viaSecond ? <>{a.roleSecondary} <span className="crm-tag">2nd choice</span></> : a.role}
-                              </div>
-                            ) : null}
-                            <div className="crm-badges">
-                              {a.votes.length ? (
-                                <span className="crm-badge votes" title={a.votes.map((v) => v.reviewer + ": " + v.vote).join("\n")}>
-                                  {t.yes ? <><i className="v yes" />{t.yes}</> : null}
-                                  {t.maybe ? <><i className="v maybe" />{t.maybe}</> : null}
-                                  {t.no ? <><i className="v no" />{t.no}</> : null}
-                                </span>
-                              ) : null}
-                              {sent.invite ? <span className="crm-badge sent" title={"Invite emailed " + fmtDateTime(sent.invite)}><Icon name="mail" size={12} />Invite · {ago(sent.invite)}</span> : null}
-                              {sent.offer ? <span className="crm-badge sent" title={"Offer emailed " + fmtDateTime(sent.offer)}><Icon name="mail" size={12} />Offer · {ago(sent.offer)}</span> : null}
-                              {sent.reject ? <span className="crm-badge sent" title={"Rejection emailed " + fmtDateTime(sent.reject)}><Icon name="mail" size={12} />Rejection · {ago(sent.reject)}</span> : null}
-                              {a.conflicts.length ? (
-                                <span className="crm-badge coi" title={"Knows this applicant (vote not counted):\n" + a.conflicts.map((c) => c.reviewer).join("\n")}>
-                                  <Icon name="alert" size={12} />Conflict{a.conflicts.length > 1 ? " ×" + a.conflicts.length : ""}
-                                </span>
-                              ) : null}
-                              {dupes ? <span className="crm-badge dup" title="Another application uses this email">Duplicate</span> : null}
-                            </div>
-                            <div className="cmeta">
-                              <span>{fmtDate(a.createdAt)}</span>
-                              <span className="spacer" />
-                              <AvatarStack names={viewers.get(a.id) ?? []} size={18} max={2} label={(viewers.get(a.id) ?? []).join(", ") + " viewing"} />
-                              {a.rating ? <RatingPill rating={a.rating} /> : null}
-                            </div>
-                            {quick && !sentNow && !selectMode ? (
-                              <button className="ui-btn is-block crm-card-action" type="button" onClick={(e) => { e.stopPropagation(); openSend(a, quick); }} onKeyDown={(e) => e.stopPropagation()}>
-                                <Icon name="mail" />{SEND_META[quick].button}
-                              </button>
-                            ) : null}
-                          </div>
-                        );
-                      })}
+                      {items.slice(0, limits[stage.id] ?? COLUMN_PAGE).map((a) => (
+                        <BoardCard
+                          key={a.id}
+                          a={a}
+                          selectMode={selectMode}
+                          isSel={selected.has(a.id)}
+                          isDragging={dragging === a.id}
+                          viaSecond={!!filters.role && a.role !== filters.role && a.roleSecondary === filters.role}
+                          dupes={dupesOf(a).length}
+                          viewers={(viewers.get(a.id) ?? []).join(",")}
+                          actions={cardActions}
+                        />
+                      ))}
+                      {items.length > (limits[stage.id] ?? COLUMN_PAGE) ? (
+                        <MoreCards
+                          remaining={items.length - (limits[stage.id] ?? COLUMN_PAGE)}
+                          onMore={() => setLimits((l) => ({ ...l, [stage.id]: (l[stage.id] ?? COLUMN_PAGE) + COLUMN_PAGE }))}
+                        />
+                      ) : null}
                     </div>
                   </section>
                 );
@@ -793,6 +898,14 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
         </div>
       ) : null}
 
+      {cmdOpen ? (
+        <CommandMenu
+          commands={commands}
+          applicants={applicants}
+          onClose={() => setCmdOpen(false)}
+          onOpenApplicant={(id) => { setView("board"); setOrigin(null); setOpenId(id); }}
+        />
+      ) : null}
       {peek && view === "board" ? (() => { const pa = applicants.find((x) => x.id === peek.id); return pa ? <HoverPreview a={pa} rect={peek.rect} /> : null; })() : null}
       {open ? (
         <ApplicantModal
