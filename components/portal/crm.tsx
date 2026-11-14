@@ -16,7 +16,8 @@ import { SendModal } from "./send-modal";
 import { SettingsModal, type PurgeMode } from "./settings-modal";
 import { DEFAULT_SETTINGS, loadSettings, type PortalSettings, type SettingsMeta } from "@/lib/settings";
 import { Icon } from "./icons";
-import { Menu, Select, confirmDialog, toast, useTheme, type SelectOption } from "./ui";
+import { Menu, Select, Ticker, toast, useTheme, type SelectOption } from "./ui";
+import { AvatarStack, BoardSkeleton, HoverPreview, firstName, useFlip, usePeek, usePresence } from "./board-extras";
 
 // The committee recruitment board: the app shell (top bar), the pipeline board and the
 // insights view. Styled by app/portal.css.
@@ -47,6 +48,17 @@ function quickSend(a: Applicant): SendKind | null {
   if (a.status === "offer") return "offer";
   if (a.status === "rejected") return rejectionKind(a);
   return null;
+}
+
+/** Still waiting on this reviewer's screening vote (only while being screened). */
+function needsMyVote(a: Applicant, me: string) {
+  return !!me && (a.status === "applied" || a.status === "review")
+    && !a.votes.some((v) => v.reviewer === me) && !a.conflicts.some((c) => c.reviewer === me);
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
 function RatingPill({ rating }: { rating: string }) {
@@ -110,6 +122,13 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const [bulk, setBulk] = useState<BulkKind | null>(null);
   const [theme, setTheme] = useTheme();
   const searchRef = useRef<HTMLInputElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [origin, setOrigin] = useState<DOMRect | null>(null);
+  // Live connection: "down" shows a Reconnecting pill in the top bar.
+  const [connection, setConnection] = useState<"ok" | "down">("ok");
+  // After a failed load, retry automatically with a growing delay (5s, 10s, 20s, max 30s).
+  const [retryIn, setRetryIn] = useState(0);
+  const attempts = useRef(0);
 
   // "/" jumps to search, like most tools people already use.
   useEffect(() => {
@@ -141,14 +160,37 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     const a = await fetchApplications((sel) => db.from("applications").select(sel).order("created_at", { ascending: false }));
     if (a.error) {
       setLoadError(a.error.message || "Couldn't load applications.");
+      attempts.current += 1;
+      setRetryIn(Math.min(30, 5 * 2 ** (attempts.current - 1)));
     } else {
       setApplicants((a.data ?? []).map(applicantFromRow));
       setLoadError("");
+      attempts.current = 0;
+      setRetryIn(0);
     }
     setLoading(false);
   }, []);
 
   const reload = useCallback(() => { setLoading(true); return load(); }, [load]);
+
+  // Count down to the next automatic retry, then try again.
+  useEffect(() => {
+    if (!loadError || retryIn <= 0) return;
+    const t = setTimeout(() => {
+      if (retryIn === 1) load();
+      setRetryIn((n) => Math.max(0, n - 1));
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [loadError, retryIn, load]);
+
+  // The browser going offline / online.
+  useEffect(() => {
+    const down = () => setConnection("down");
+    const up = () => setConnection("ok");
+    window.addEventListener("offline", down);
+    window.addEventListener("online", up);
+    return () => { window.removeEventListener("offline", down); window.removeEventListener("online", up); };
+  }, []);
 
   // Re-fetch just the given applicants (with their notes) and patch them into the board.
   // Anything that no longer comes back was deleted (or is no longer visible to us).
@@ -196,7 +238,14 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       // A teammate saving settings updates everyone's board.
       .on("postgres_changes", { event: "*", schema: "public", table: "portal_settings" }, () => { refreshSettings(); })
       // The first connect is covered by the load below; later ones are reconnects after a drop.
-      .subscribe((status) => { if (status === "SUBSCRIBED" && connects++ > 0) load(); });
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setConnection(navigator.onLine === false ? "down" : "ok");
+          if (connects++ > 0) load();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setConnection("down");
+        }
+      });
     // Load straight away too, in case the live connection is slow or blocked.
     const first = setTimeout(load, 0);
     const settingsTimer = setTimeout(refreshSettings, 0);
@@ -223,7 +272,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       // A team filter also shows people who picked that team as their second choice.
       if (filters.role && a.role !== filters.role && a.roleSecondary !== filters.role) return false;
       const f = filters.rating;
-      if (f === "needs-my-vote" && (a.votes.some((v) => v.reviewer === me) || a.conflicts.some((c) => c.reviewer === me))) return false;
+      if (f === "needs-my-vote" && !needsMyVote(a, me)) return false;
       if (f === "conflicts" && !a.conflicts.length) return false;
       if (f === "no-votes" && a.votes.length) return false;
       if (f === "votes-yes") { const t = voteTally(a.votes); if (!(t.yes > t.no && t.yes >= t.maybe)) return false; }
@@ -237,12 +286,41 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
 
   const setFilter = (k: keyof typeof filters, v: string) => setFilters((f) => ({ ...f, [k]: v }));
 
+  // Who else is here, and who's looking at which applicant.
+  const { online, viewers } = usePresence(me, openId);
+  // Hover previews (not while selecting or dragging).
+  const { peek, enter: peekEnter, leave: peekLeave } = usePeek(!selectMode && !dragging && !openId && view === "board");
+  // Cards slide to their new place when they move.
+  const flipSignature = visible.map((a) => a.id + ":" + a.status + ":" + a.updatedAt).join("|") + "|" + view;
+  useFlip(boardRef, flipSignature);
+
+  // Board shortcuts: R refresh, S select mode (only with no panel or dialog open).
+  const shortcuts = useRef({ reload: () => {}, toggleSelect: () => {} });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, select, [contenteditable='true']") || document.querySelector('[aria-modal="true"], .ui-pop')) return;
+      const k = e.key.toLowerCase();
+      if (k === "r") { e.preventDefault(); shortcuts.current.reload(); }
+      else if (k === "s") { e.preventDefault(); shortcuts.current.toggleSelect(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  useEffect(() => {
+    shortcuts.current = {
+      reload: () => { if (view === "board") reload(); },
+      toggleSelect: () => { if (view !== "board") return; if (selectMode) { setSelectMode(false); setSelected(new Set()); } else setSelectMode(true); },
+    };
+  });
+
   async function addNote(id: string, text: string, type: "auto" | "manual" | "interview") {
     const { error } = await portalClient().from("application_notes").insert({ application_id: id, type, text });
     if (error) toast("Couldn't save note: " + error.message);
   }
 
-  async function moveTo(id: string, status: StageId) {
+  async function moveTo(id: string, status: StageId, opts: { undoable?: boolean } = { undoable: true }) {
     const a = applicants.find((x) => x.id === id);
     if (!a || a.status === status) return;
     const prev = a.status;
@@ -255,6 +333,11 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       return;
     }
     await addNote(id, "Moved to " + STAGE_BY_ID[status].label, "auto");
+    if (opts.undoable) {
+      toast(`${a.name || "Applicant"} moved to ${STAGE_BY_ID[status].label}`, {
+        action: { label: "Undo", onClick: () => { moveTo(id, prev, { undoable: false }); } },
+      });
+    }
   }
 
   function openSend(a: Applicant, kind: SendKind) {
@@ -277,17 +360,30 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const exitSelect = () => { setSelectMode(false); setSelected(new Set()); };
 
-  async function bulkMove(status: StageId) {
-    const ids = selectedApplicants.filter((a) => a.status !== status).map((a) => a.id);
-    if (!ids.length) return;
-    if (!(await confirmDialog({ title: `Move ${ids.length} applicant${ids.length === 1 ? "" : "s"} to ${STAGE_BY_ID[status].label}?`, confirmLabel: "Move" }))) return;
+  /** Moves several applicants at once. `from` restores each one's own previous stage (Undo). */
+  async function bulkMove(status: StageId | null, from?: Map<string, StageId>) {
+    const targets = from
+      ? [...from.entries()]
+      : selectedApplicants.filter((a) => a.status !== status).map((a) => [a.id, status as StageId] as [string, StageId]);
+    if (!targets.length) return;
+    const previous = new Map(targets.map(([id]) => [id, applicants.find((x) => x.id === id)?.status ?? "applied"] as [string, StageId]));
     const db = portalClient();
-    const { data, error } = await db.from("applications").update({ status }).in("id", ids).select("id");
-    if (error) { toast("Couldn't move them: " + error.message); return; }
-    const moved = (data ?? []).map((r) => r.id as string);
-    await db.from("application_notes").insert(moved.map((id) => ({ application_id: id, type: "auto", text: "Moved to " + STAGE_BY_ID[status].label })));
-    toast(`Moved ${moved.length} to ${STAGE_BY_ID[status].label}`);
-    await refreshIds(ids);
+    // Optimistic: move the cards now; the database catches up below.
+    setApplicants((l) => l.map((x) => { const t = targets.find(([id]) => id === x.id); return t ? { ...x, status: t[1], updatedAt: new Date().toISOString() } : x; }));
+    const byStage = new Map<StageId, string[]>();
+    for (const [id, st] of targets) byStage.set(st, [...(byStage.get(st) ?? []), id]);
+    for (const [st, ids] of byStage) {
+      const { data, error } = await db.from("applications").update({ status: st }).in("id", ids).select("id");
+      if (error) { toast("Couldn't move them: " + error.message); await refreshIds(targets.map(([id]) => id)); return; }
+      const moved = (data ?? []).map((r) => r.id as string);
+      if (moved.length) await db.from("application_notes").insert(moved.map((id) => ({ application_id: id, type: "auto", text: "Moved to " + STAGE_BY_ID[st].label })));
+    }
+    await refreshIds(targets.map(([id]) => id));
+    if (!from && status) {
+      toast(`Moved ${targets.length} to ${STAGE_BY_ID[status].label}`, {
+        action: { label: "Undo", onClick: () => { bulkMove(null, previous); } },
+      });
+    }
   }
 
   // ---- Export + end-of-season clean-up -------------------------------------------------
@@ -395,6 +491,10 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           </button>
         </nav>
         <div className="app-bar-end">
+          {connection === "down" ? (
+            <span className="conn-pill" role="status"><span className="conn-dot" aria-hidden="true" />Reconnecting…</span>
+          ) : null}
+          <AvatarStack names={online} size={24} label={online.join(", ") + (online.length === 1 ? " is" : " are") + " online"} />
           <Menu
             label="Appearance"
             items={[
@@ -431,22 +531,22 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   );
 
   const shell = (body: React.ReactNode) => (
-    <div className="app">
+    <div className={"app" + (view === "board" ? " is-board" : "")}>
       {topbar}
       <div className="app-body">{body}</div>
       {settingsModal}
     </div>
   );
 
-  if (loading) {
-    return shell(<div className="state"><span className="spinner" aria-hidden="true" /><p>Loading applications…</p></div>);
-  }
+  if (loading) return shell(<BoardSkeleton />);
   if (loadError) {
     return shell(
-      <div className="state">
-        <h3>Couldn&apos;t load applications</h3>
-        <p>{loadError} If this is a new setup, check that supabase/schema.sql has been run and your email is in committee_members.</p>
-        <button className="ui-btn ui-btn-primary" type="button" onClick={reload}>Try again</button>
+      <div className="state is-error">
+        <Glyph3D kind="network" />
+        <h3>Couldn&apos;t reach the database</h3>
+        <p>{retryIn > 0 ? `Trying again in ${retryIn}s…` : "Trying again…"}</p>
+        <button className="ui-btn ui-btn-primary" type="button" onClick={() => { setRetryIn(0); reload(); }}>Try now</button>
+        <code className="state-detail">{loadError}</code>
       </div>,
     );
   }
@@ -467,6 +567,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const nav: PanelNav | undefined = at >= 0 ? { index: at, total: order.length, prev: order[at - 1], next: order[at + 1] } : undefined;
   const sending = send ? applicants.find((a) => a.id === send.id) : undefined;
   const filtering = !!(filters.q || filters.role || filters.rating);
+  const myQueue = applicants.filter((a) => needsMyVote(a, me)).length;
   const teamOptions: SelectOption[] = [
     { value: "", label: "All teams" },
     ...roles.map((r) => ({ value: r, label: r, group: "Includes 2nd choice" })),
@@ -485,10 +586,22 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
                 <Glyph3D kind="network" />
                 <h1>Pipeline</h1>
               </div>
-              {filtering ? <p>{visible.length} of {applicants.length} shown</p> : null}
+              {filtering ? <p>{visible.length} of {applicants.length} shown</p> : (
+                <p className="greet">
+                  {greeting()}{firstName(me) ? `, ${firstName(me)}` : ""}
+                  {myQueue ? (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      <button type="button" className="greet-link" onClick={() => setFilter("rating", "needs-my-vote")}>
+                        {myQueue} need{myQueue === 1 ? "s" : ""} your vote
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              )}
             </div>
             <dl className="pipe-stats">
-              {tiles.map(([l, v]) => <div className="pipe-stat" key={l}><dd>{v}</dd><dt>{l}</dt></div>)}
+              {tiles.map(([l, v]) => <div className="pipe-stat" key={l}><dd><Ticker value={v} /></dd><dt>{l}</dt></div>)}
             </dl>
           </div>
 
@@ -515,6 +628,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
               className={"ui-btn" + (selectMode ? " is-on" : "")}
               type="button"
               aria-pressed={selectMode}
+              data-tip={selectMode ? "Done · S" : "Select · S"}
               onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
             >
               <Icon name="checkSquare" />{selectMode ? "Done" : "Select"}
@@ -522,7 +636,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
             <Menu
               label="More actions"
               items={[
-                { label: "Refresh", icon: <Icon name="refresh" />, onSelect: () => { reload(); } },
+                { label: "Refresh", icon: <Icon name="refresh" />, hint: <kbd>R</kbd>, onSelect: () => { reload(); } },
                 "sep",
                 { label: "Export JSON backup", icon: <Icon name="download" />, onSelect: exportJSON },
                 { label: "Export CSV", icon: <Icon name="download" />, onSelect: exportCSV },
@@ -533,12 +647,13 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           </div>
 
           {applicants.length === 0 ? (
-            <div className="state is-boxed">
+            <div className="state is-boxed empty-art">
+              <Glyph3D kind="network" />
               <h3>No applicants yet</h3>
               <a className="ui-btn" href="/recruitment-demo" target="_blank" rel="noopener">Open the application form <Icon name="external" /></a>
             </div>
           ) : (
-            <div className={"crm-board" + (selectMode ? " is-selecting" : "")} id="crm-board">
+            <div ref={boardRef} className={"crm-board" + (selectMode ? " is-selecting" : "")} id="crm-board">
               {STAGES.map((stage) => {
                 const items = visible.filter((a) => a.status === stage.id).sort((x, y) => (y.updatedAt || "").localeCompare(x.updatedAt || ""));
                 const allOn = items.length > 0 && items.every((a) => selected.has(a.id));
@@ -584,12 +699,15 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
                             className={"crm-card" + (dragging === a.id ? " dragging" : "") + (isSel ? " selected" : "")}
                             draggable={!selectMode}
                             data-id={a.id}
+                            data-flip={a.id}
+                            onMouseEnter={(e) => peekEnter(a.id, e.currentTarget)}
+                            onMouseLeave={peekLeave}
                             role="button"
                             tabIndex={0}
                             aria-pressed={selectMode ? isSel : undefined}
-                            onClick={() => (selectMode ? toggle(a.id) : setOpenId(a.id))}
-                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (selectMode) toggle(a.id); else setOpenId(a.id); } }}
-                            onDragStart={(e) => { e.dataTransfer.setData("text/plain", a.id); e.dataTransfer.effectAllowed = "move"; setDragging(a.id); }}
+                            onClick={(e) => { peekLeave(); if (selectMode) toggle(a.id); else { setOrigin(e.currentTarget.getBoundingClientRect()); setOpenId(a.id); } }}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (selectMode) toggle(a.id); else { setOrigin(e.currentTarget.getBoundingClientRect()); setOpenId(a.id); } } }}
+                            onDragStart={(e) => { peekLeave(); e.dataTransfer.setData("text/plain", a.id); e.dataTransfer.effectAllowed = "move"; setDragging(a.id); }}
                             onDragEnd={() => setDragging(null)}
                           >
                             <div className="card-top">
@@ -624,6 +742,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
                             <div className="cmeta">
                               <span>{fmtDate(a.createdAt)}</span>
                               <span className="spacer" />
+                              <AvatarStack names={viewers.get(a.id) ?? []} size={18} max={2} label={(viewers.get(a.id) ?? []).join(", ") + " viewing"} />
                               {a.rating ? <RatingPill rating={a.rating} /> : null}
                             </div>
                             {quick && !sentNow && !selectMode ? (
@@ -674,18 +793,21 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
         </div>
       ) : null}
 
+      {peek && view === "board" ? (() => { const pa = applicants.find((x) => x.id === peek.id); return pa ? <HoverPreview a={pa} rect={peek.rect} /> : null; })() : null}
       {open ? (
         <ApplicantModal
           key={open.id}
+          origin={origin}
+          viewers={viewers.get(open.id) ?? []}
           a={open}
           me={me}
           duplicates={dupesOf(open)}
           ratingMovesStage={settings.ratingMovesStage}
           nav={nav}
-          onClose={() => setOpenId(null)}
+          onClose={() => { setOpenId(null); setOrigin(null); }}
           onSaved={() => refreshIds([open.id])}
           onSendInvite={(id) => setSend({ id, kind: "invite" })}
-          onOpenOther={(id) => setOpenId(id)}
+          onOpenOther={(id) => { setOrigin(null); setOpenId(id); }}
         />
       ) : null}
       {send && sending ? (

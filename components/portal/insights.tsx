@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { SEND_META, STAGES, fmtDate, fmtDateTime, type Applicant, type StageId } from "@/lib/portal";
 import { Glyph3D } from "./glyph-3d";
+import { Ticker } from "./ui";
 
 // Recruitment insights for the exec: volume, mix, funnel, timing and reviewer workload.
 // Everything is computed from the applicants the board already loaded (no extra queries).
@@ -183,7 +184,7 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
   }, [applicants, now]);
 
   if (!d.total) {
-    return <div className="state is-boxed"><h3>No data yet</h3></div>;
+    return <div className="state is-boxed empty-art"><Glyph3D kind="bars" /><h3>No data yet</h3></div>;
   }
 
   const delta = d.thisWeek - d.lastWeek;
@@ -206,7 +207,7 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
         {tiles.map(([label, value, sub]) => (
           <div className="ins-tile" key={label}>
             <div className="ins-tile-label">{label}</div>
-            <div className="ins-tile-value">{value}</div>
+            <div className="ins-tile-value"><Ticker value={value} /></div>
             {sub ? <div className="ins-tile-sub">{sub}</div> : null}
           </div>
         ))}
