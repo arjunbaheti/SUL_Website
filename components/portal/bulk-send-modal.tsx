@@ -10,6 +10,10 @@ import { Modal, confirmDialog } from "./ui";
 // Gmail allows roughly 500 messages a day on a normal account (2,000 on Google Workspace), so a
 // single batch is capped well under that.
 export const MAX_BATCH = 300;
+// Gap between emails in a batch. Gmail is more likely to flag a sudden burst from one account,
+// so a batch is spread out (300 emails takes about 6 minutes).
+const SEND_GAP_MS = 1200;
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type BulkKind = "invite" | "offer" | "reject";
 const CHOICES: { id: BulkKind; label: string }[] = [
@@ -54,7 +58,9 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
     if (!(await confirmDialog({ title: `Email ${toSend.length} ${noun}${toSend.length === 1 ? "" : "s"} now?`, body: "Emails go out one at a time from the club Gmail. This can't be undone.", confirmLabel: `Send ${toSend.length}` }))) return;
     stop.current = false;
     setPhase("sending");
-    for (const p of toSend) {
+    for (const [i, p] of toSend.entries()) {
+      if (stop.current) break;
+      if (i > 0) await wait(SEND_GAP_MS);
       if (stop.current) break;
       const d = draftFor(p.a, p.kind, settings);
       const err = await sendEmail(p.a.email, d.subject, d.body, settings);
@@ -91,7 +97,7 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
           </>
         ) : phase === "sending" ? (
           <>
-            <span className="crm-help" style={{ margin: 0 }}>Keep this tab open until it finishes.</span>
+            <span className="crm-help" style={{ margin: 0 }}>Keep this tab open until it finishes. Emails are spaced out to stay out of spam folders.</span>
             <span className="spacer" />
             <button className="ui-btn" type="button" onClick={() => { stop.current = true; }}>Stop</button>
           </>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import { Crm } from "./crm";
+import { CursorTrail } from "./cursor-trail";
 import { PortalHosts, THEME_KEY, usePortalDocument } from "./ui";
 
 // Sets the portal flag and the saved theme while the HTML is still parsing, so the first paint
@@ -105,6 +106,7 @@ export function PortalGate() {
         </div>
       )}
       <PortalHosts />
+      <CursorTrail />
     </>
   );
 }

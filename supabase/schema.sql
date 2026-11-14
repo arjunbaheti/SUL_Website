@@ -9,6 +9,7 @@
 --   application_notes   interview notes + activity log, one row per entry (safe for many editors)
 --   booking_slots       shared zcal interview slots (was per-browser localStorage)
 --   storage bucket      "resumes" (PRIVATE): resume + extra attachments
+--   form_events         anonymous application-form progress (no answers), for the Health tab
 --
 -- Security model
 --   * The public site uses the "anon" key. Anon can ONLY insert an application (with a locked-down
@@ -345,6 +346,42 @@ end;
 $$;
 revoke all on function public.claim_application_confirmation(uuid) from public;
 grant execute on function public.claim_application_confirmation(uuid) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Application health (anonymous form progress events; see the portal's Health tab)
+-- ---------------------------------------------------------------------------
+--
+-- Privacy: no answers, names or emails are stored. Each row is just "session X did <event> on
+-- <field name> at <time>", where session X is a random id kept in the visitor's browser tab.
+create table if not exists public.form_events (
+  id         bigint generated always as identity primary key,
+  session_id uuid not null,
+  event      text not null,
+  field      text,
+  device     text,
+  created_at timestamptz not null default now(),
+  constraint form_events_event_chk  check (event in ('view','start','field','invalid','submit','error','submitted')),
+  constraint form_events_field_chk  check (field is null or field ~ '^[a-z0-9_]{1,32}$'),
+  constraint form_events_device_chk check (device is null or device in ('mobile','desktop'))
+);
+create index if not exists form_events_created_idx on public.form_events (created_at);
+create index if not exists form_events_session_idx on public.form_events (session_id);
+
+alter table public.form_events enable row level security;
+
+-- Visitors can only add events (stamped with the server's time); they can never read them.
+drop policy if exists "public logs form events" on public.form_events;
+create policy "public logs form events" on public.form_events
+  for insert to anon, authenticated
+  with check (created_at > now() - interval '1 minute' and created_at < now() + interval '1 minute');
+
+drop policy if exists "committee reads form events"   on public.form_events;
+drop policy if exists "committee clears form events"  on public.form_events;
+create policy "committee reads form events"  on public.form_events for select to authenticated using (public.is_committee());
+create policy "committee clears form events" on public.form_events for delete to authenticated using (public.is_committee());
+
+grant insert on public.form_events to anon, authenticated;
+grant select, delete on public.form_events to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Live updates for the board (new applications appear without a refresh)

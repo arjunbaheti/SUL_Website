@@ -43,6 +43,7 @@ applicant ──► /recruitment-demo ──► Supabase  ◄── /portal ◄�
 - The browser only holds the public anon key (`lib/supabase-config.ts`). Row Level Security lets an anonymous visitor insert a new application and upload a file, and nothing else. Only signed-in users listed in `committee_members` can read or change applications and open resumes (via 2-minute signed links).
 - `supabase/schema.sql` defines the tables, storage bucket and policies. Run it once in the Supabase SQL editor (the header comments list `alter table` lines for databases created earlier).
 - Answers to the two main questions are capped at 200 words (+5 slack) in the form.
+- The form logs anonymous progress events (field names only, never answers) to `form_events` for the portal's **Health** tab: how many people start, where they drop off, what blocks submit. Setup: run `supabase/migrations/2026-11-14-form-health.sql` once. Clear test data from the Health tab's `⋯` menu.
 
 ## Environment variables (Vercel)
 
