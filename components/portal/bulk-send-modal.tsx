@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { SEND_META, ago, rejectionKind, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
 import { fillTemplate, type PortalSettings } from "@/lib/settings";
 import { draftFor, sendEmail } from "./send-modal";
-import { Modal } from "./ui";
+import { Modal, confirmDialog } from "./ui";
 
 // Sends the same kind of email to many applicants, one at a time, using the saved templates.
 // Gmail allows roughly 500 messages a day on a normal account (2,000 on Google Workspace), so a
@@ -51,7 +51,7 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
   async function run() {
     if (!toSend.length) return;
     const noun = choice === "reject" ? "rejection" : choice === "offer" ? "offer" : "interview invite";
-    if (!window.confirm(`Email ${toSend.length} ${noun}${toSend.length === 1 ? "" : "s"} now? This can't be undone.`)) return;
+    if (!(await confirmDialog({ title: `Email ${toSend.length} ${noun}${toSend.length === 1 ? "" : "s"} now?`, body: "Emails go out one at a time from the club Gmail. This can't be undone.", confirmLabel: `Send ${toSend.length}` }))) return;
     stop.current = false;
     setPhase("sending");
     for (const p of toSend) {
@@ -64,9 +64,9 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
     setPhase("done");
   }
 
-  function close() {
+  async function close() {
     if (phase === "sending") {
-      if (!window.confirm("Stop sending? Emails already sent stay sent.")) return;
+      if (!(await confirmDialog({ title: "Stop sending?", body: "Emails already sent stay sent.", confirmLabel: "Stop sending", danger: true }))) return;
       stop.current = true;
       return;
     }
@@ -84,8 +84,8 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
           <>
             <span className="crm-help" style={{ margin: 0 }}>Uses the templates in Settings.</span>
             <span className="spacer" />
-            <button className="btn btn-secondary btn-sm" type="button" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary btn-sm" type="button" disabled={!toSend.length} onClick={run}>
+            <button className="ui-btn" type="button" onClick={onClose}>Cancel</button>
+            <button className="ui-btn ui-btn-primary" type="button" disabled={!toSend.length} onClick={run}>
               Send {toSend.length} email{toSend.length === 1 ? "" : "s"}
             </button>
           </>
@@ -93,12 +93,12 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
           <>
             <span className="crm-help" style={{ margin: 0 }}>Keep this tab open until it finishes.</span>
             <span className="spacer" />
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => { stop.current = true; }}>Stop</button>
+            <button className="ui-btn" type="button" onClick={() => { stop.current = true; }}>Stop</button>
           </>
         ) : (
           <>
             <span className="spacer" />
-            <button className="btn btn-primary btn-sm" type="button" onClick={onClose}>Done</button>
+            <button className="ui-btn ui-btn-primary" type="button" onClick={onClose}>Done</button>
           </>
         )
       }
@@ -149,7 +149,7 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
       <div className="crm-bulk-list">
         {plan.map((p) => {
           const r = results[p.a.id];
-          const state = r === "sent" ? "Sent ✓" : r ? "Failed: " + r : p.skip ? "Skipped: " + p.skip : phase === "review" ? SEND_META[p.kind].label : "Waiting";
+          const state = r === "sent" ? "Sent" : r ? "Failed: " + r : p.skip ? "Skipped: " + p.skip : phase === "review" ? SEND_META[p.kind].label : "Waiting";
           return (
             <div className={"crm-bulk-row" + (p.skip ? " skip" : "") + (r && r !== "sent" ? " fail" : "")} key={p.a.id}>
               <span className="n">{p.a.name || "Unnamed"}</span>

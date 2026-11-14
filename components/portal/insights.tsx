@@ -182,7 +182,7 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
   }, [applicants, now]);
 
   if (!d.total) {
-    return <div className="crm-empty"><h3>No data yet</h3><p>Insights fill in as applications arrive.</p></div>;
+    return <div className="state is-boxed"><h3>No data yet</h3><p>Insights fill in as applications arrive.</p></div>;
   }
 
   const delta = d.thisWeek - d.lastWeek;
@@ -195,6 +195,12 @@ export function Insights({ applicants }: { applicants: Applicant[] }) {
 
   return (
     <div className="ins">
+      <div className="page-head ins-head">
+        <div>
+          <h1>Insights</h1>
+          <p>Volume, funnel, timing and reviewer workload across {d.total} applicant{d.total === 1 ? "" : "s"}</p>
+        </div>
+      </div>
       <div className="ins-tiles">
         {tiles.map(([label, value, sub]) => (
           <div className="ins-tile" key={label}>

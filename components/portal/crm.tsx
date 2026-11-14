@@ -13,10 +13,11 @@ import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
 import { SendModal } from "./send-modal";
 import { SettingsModal, type PurgeMode } from "./settings-modal";
 import { DEFAULT_SETTINGS, loadSettings, type PortalSettings, type SettingsMeta } from "@/lib/settings";
-import { toast } from "./ui";
+import { Icon } from "./icons";
+import { Menu, Select, confirmDialog, toast, useTheme, type SelectOption } from "./ui";
 
-// The committee recruitment board. Same markup and class names as the original portal
-// (styled by app/portal.css); React handles state instead of hand-built DOM.
+// The committee recruitment board: the app shell (top bar), the pipeline board and the
+// insights view. Styled by app/portal.css.
 
 const CSV_COLS = [
   "name", "email", "phone", "degree", "yearLevel", "role", "roleSecondary", "status", "rating", "linkedin",
@@ -48,7 +49,24 @@ function quickSend(a: Applicant): SendKind | null {
 
 function RatingPill({ rating }: { rating: string }) {
   const label = RATINGS.find((r) => r.id === rating)?.label ?? rating;
-  return <span className={"rating " + rating}><span className="rd" />{label}</span>;
+  return <span className={"rating " + rating} title={"Interview rating: " + label}><span className="rd" />{label}</span>;
+}
+
+const FILTERS: SelectOption[] = [
+  { value: "", label: "Everyone" },
+  { value: "needs-my-vote", label: "Needs my vote", group: "Screening" },
+  { value: "no-votes", label: "No votes yet", group: "Screening" },
+  { value: "votes-yes", label: "Mostly yes votes", group: "Screening" },
+  { value: "conflicts", label: "Conflict of interest", group: "Screening" },
+  ...RATINGS.map((r) => ({ value: r.id, label: "Rated " + r.label.toLowerCase(), group: "Interview rating" })),
+  { value: "second-flag", label: "Flagged for 2nd choice", group: "Other" },
+  { value: "duplicates", label: "Possible duplicates", group: "Other" },
+];
+
+function initials(email: string) {
+  const name = email.split("@")[0] || "?";
+  const parts = name.split(/[._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || name[0].toUpperCase();
 }
 
 export function Crm() {
@@ -73,7 +91,6 @@ export function Crm() {
       window.removeEventListener("drop", clear, true);
     };
   }, [dragging]);
-  const menuRef = useRef<HTMLDetailsElement>(null);
   const [settings, setSettings] = useState<PortalSettings>(DEFAULT_SETTINGS);
   const [settingsMeta, setSettingsMeta] = useState<SettingsMeta>({ updatedAt: "", updatedBy: "", missingTable: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -82,7 +99,21 @@ export function Crm() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<BulkKind | null>(null);
-  const bulkMenuRef = useRef<HTMLDetailsElement>(null);
+  const [theme, setTheme] = useTheme();
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // "/" jumps to search, like most tools people already use.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [contenteditable], [role=dialog], .ui-pop")) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   // Who is signed in (for "your vote" and the "needs my vote" filter).
   useEffect(() => {
@@ -240,7 +271,7 @@ export function Crm() {
   async function bulkMove(status: StageId) {
     const ids = selectedApplicants.filter((a) => a.status !== status).map((a) => a.id);
     if (!ids.length) return;
-    if (!window.confirm(`Move ${ids.length} applicant${ids.length === 1 ? "" : "s"} to ${STAGE_BY_ID[status].label}?`)) return;
+    if (!(await confirmDialog({ title: `Move ${ids.length} applicant${ids.length === 1 ? "" : "s"} to ${STAGE_BY_ID[status].label}?`, confirmLabel: "Move" }))) return;
     const db = portalClient();
     const { data, error } = await db.from("applications").update({ status }).in("id", ids).select("id");
     if (error) { toast("Couldn't move them: " + error.message); return; }
@@ -251,7 +282,6 @@ export function Crm() {
   }
 
   // ---- Export + end-of-season clean-up -------------------------------------------------
-  const closeMenu = () => menuRef.current?.removeAttribute("open");
 
   function exportJSON() {
     download("sul-recruitment-" + stamp() + ".json", JSON.stringify({ exportedAt: new Date().toISOString(), applicants }, null, 2), "application/json");
@@ -310,29 +340,6 @@ export function Crm() {
     return `Deleted ${removed} file(s) and ${data?.length ?? 0} applicant(s), with their notes and votes.`;
   }
 
-  const head = (
-    <div className="crm-head">
-      <div>
-        <h2>Recruitment</h2>
-        <p>Track every applicant from first application through to offer.</p>
-      </div>
-      <div className="crm-head-actions">
-        <button
-          className="btn btn-secondary btn-sm crm-settings-btn"
-          type="button"
-          onClick={async () => { await refreshSettings(); setSettingsOpen(true); }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-          Settings
-        </button>
-        <button className="btn btn-secondary btn-sm" type="button" onClick={() => portalClient().auth.signOut()}>Sign out</button>
-      </div>
-    </div>
-  );
-
   const settingsModal = settingsOpen ? (
     <SettingsModal
       key={settingsMeta.updatedAt || "default"}
@@ -346,18 +353,78 @@ export function Crm() {
     />
   ) : null;
 
-  if (loading) return <>{head}<div className="crm-empty"><h3>Loading applications…</h3></div>{settingsModal}</>;
-  if (loadError) {
-    return (
-      <>
-        {head}
-        <div className="crm-empty">
-          <h3>Couldn&apos;t load applications</h3>
-          <p>{loadError} If this is a new setup, check that supabase/schema.sql has been run and your email is in committee_members.</p>
-          <div className="cta-row"><button className="btn btn-primary" type="button" onClick={reload}>Try again</button></div>
+  const topbar = (
+    <header className="app-bar">
+      <div className="app-bar-inner">
+        <a className="app-brand" href="/" title="StartUp Link UniMelb website">
+          {/* eslint-disable-next-line @next/next/no-img-element -- tiny static brand mark */}
+          <img src="/icon.png" alt="" width={22} height={22} />
+          <span className="app-brand-name">StartUp Link</span>
+        </a>
+        <span className="app-bar-slash" aria-hidden="true">/</span>
+        <span className="app-bar-crumb">Recruitment</span>
+        <nav className="app-tabs" aria-label="Portal view">
+          <button type="button" aria-current={view === "board" ? "page" : undefined} onClick={() => setView("board")}>
+            <Icon name="board" />Board
+          </button>
+          <button type="button" aria-current={view === "insights" ? "page" : undefined} onClick={() => { exitSelect(); setView("insights"); }}>
+            <Icon name="chart" />Insights
+          </button>
+        </nav>
+        <div className="app-bar-end">
+          <Menu
+            label="Appearance"
+            items={[
+              { heading: "Appearance" },
+              { label: "System", checked: theme === "system", onSelect: () => setTheme("system") },
+              { label: "Light", checked: theme === "light", onSelect: () => setTheme("light") },
+              { label: "Dark", checked: theme === "dark", onSelect: () => setTheme("dark") },
+            ]}
+          >
+            <Icon name={theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor"} />
+          </Menu>
+          <button
+            className="ui-icon-btn"
+            type="button"
+            title="Settings"
+            aria-label="Settings"
+            onClick={async () => { await refreshSettings(); setSettingsOpen(true); }}
+          >
+            <Icon name="sliders" />
+          </button>
+          <Menu
+            label="Account"
+            className="app-avatar"
+            items={[
+              { heading: me || "Signed in" },
+              { label: "Sign out", icon: <Icon name="logOut" />, onSelect: () => { portalClient().auth.signOut(); } },
+            ]}
+          >
+            {me ? initials(me) : ""}
+          </Menu>
         </div>
-        {settingsModal}
-      </>
+      </div>
+    </header>
+  );
+
+  const shell = (body: React.ReactNode) => (
+    <div className="app">
+      {topbar}
+      <div className="app-body">{body}</div>
+      {settingsModal}
+    </div>
+  );
+
+  if (loading) {
+    return shell(<div className="state"><span className="spinner" aria-hidden="true" /><p>Loading applications…</p></div>);
+  }
+  if (loadError) {
+    return shell(
+      <div className="state">
+        <h3>Couldn&apos;t load applications</h3>
+        <p>{loadError} If this is a new setup, check that supabase/schema.sql has been run and your email is in committee_members.</p>
+        <button className="ui-btn ui-btn-primary" type="button" onClick={reload}>Try again</button>
+      </div>,
     );
   }
 
@@ -372,196 +439,212 @@ export function Crm() {
   ];
   const open = applicants.find((a) => a.id === openId);
   const sending = send ? applicants.find((a) => a.id === send.id) : undefined;
-  const closeBulkMenu = () => bulkMenuRef.current?.removeAttribute("open");
+  const filtering = !!(filters.q || filters.role || filters.rating);
+  const teamOptions: SelectOption[] = [
+    { value: "", label: "All teams" },
+    ...roles.map((r) => ({ value: r, label: r, group: "Includes 2nd choice" })),
+  ];
 
   return (
-    <>
-      {head}
-      <div className="crm-tabs crm-viewtabs" role="tablist" aria-label="Portal view">
-        <button type="button" role="tab" aria-selected={view === "board"} onClick={() => setView("board")}>Board</button>
-        <button type="button" role="tab" aria-selected={view === "insights"} onClick={() => { exitSelect(); setView("insights"); }}>Insights</button>
-      </div>
-      {view === "insights" ? <Insights applicants={applicants} /> : null}
-      <div hidden={view !== "board"}>
-      <div className="crm-stats">
-        {tiles.map(([l, v]) => <div className="crm-stat" key={l}><div className="n">{v}</div><div className="l">{l}</div></div>)}
-      </div>
-
-      <div className="crm-toolbar">
-        <div className="crm-search">
-          <input type="search" placeholder="Search name, email, team, degree…" aria-label="Search applicants" value={filters.q} onChange={(e) => setFilter("q", e.target.value)} />
-        </div>
-        <select aria-label="Filter by team" value={filters.role} onChange={(e) => setFilter("role", e.target.value)}>
-          <option value="">All teams</option>
-          {roles.map((r) => <option key={r} value={r}>{r} (incl. 2nd choice)</option>)}
-        </select>
-        <select aria-label="Filter" value={filters.rating} onChange={(e) => setFilter("rating", e.target.value)}>
-          <option value="">Everyone</option>
-          <optgroup label="Screening">
-            <option value="needs-my-vote">Needs my vote</option>
-            <option value="no-votes">No votes yet</option>
-            <option value="votes-yes">Mostly yes votes</option>
-            <option value="conflicts">Conflict of interest declared</option>
-          </optgroup>
-          <optgroup label="Interview rating">
-            {RATINGS.map((r) => <option key={r.id} value={r.id}>Rated: {r.label}</option>)}
-          </optgroup>
-          <optgroup label="Other">
-            <option value="second-flag">⭐ Flagged for 2nd choice</option>
-            <option value="duplicates">Possible duplicates</option>
-          </optgroup>
-        </select>
-        <button
-          className={"btn btn-sm " + (selectMode ? "btn-primary" : "btn-secondary")}
-          type="button"
-          aria-pressed={selectMode}
-          onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
-        >
-          {selectMode ? "Done selecting" : "Select"}
-        </button>
-        <details className="crm-menu" ref={menuRef}>
-          <summary aria-label="More actions">⋯</summary>
-          <div className="crm-menu-list">
-            <button type="button" onClick={() => { closeMenu(); reload(); }}>Refresh</button>
-            <div className="sep" />
-            <button type="button" onClick={() => { closeMenu(); exportJSON(); }}>Export as JSON (backup)</button>
-            <button type="button" onClick={() => { closeMenu(); exportCSV(); }}>Export as CSV</button>
+    <div className="app">
+      {topbar}
+      <div className="app-body">
+        {view === "insights" ? <Insights applicants={applicants} /> : null}
+        <div hidden={view !== "board"}>
+          <div className="page-head">
+            <div>
+              <h1>Pipeline</h1>
+              <p>
+                {filtering ? `${visible.length} of ${applicants.length} applicants` : `${applicants.length} applicant${applicants.length === 1 ? "" : "s"}`}
+                <span className="live-dot" aria-hidden="true" /> Live
+              </p>
+            </div>
           </div>
-        </details>
-      </div>
 
-      {applicants.length === 0 ? (
-        <div className="crm-empty">
-          <h3>No applicants yet</h3>
-          <p>Applications land here automatically as soon as someone submits the form on the Recruitment page.</p>
-          <div className="cta-row">
-            <a className="btn btn-secondary" href="/recruitment-demo" target="_blank" rel="noopener">Open the application form</a>
+          <dl className="stats">
+            {tiles.map(([l, v]) => <div className="stat" key={l}><dt>{l}</dt><dd>{v}</dd></div>)}
+          </dl>
+
+          <div className="toolbar">
+            <label className="search">
+              <Icon name="search" />
+              <input
+                ref={searchRef}
+                type="search"
+                placeholder="Search name, email, team, degree"
+                aria-label="Search applicants"
+                value={filters.q}
+                onChange={(e) => setFilter("q", e.target.value)}
+              />
+              {filters.q ? null : <kbd aria-hidden="true">/</kbd>}
+            </label>
+            <Select label="Filter by team" value={filters.role} onChange={(v) => setFilter("role", v)} options={teamOptions} />
+            <Select label="Filter applicants" value={filters.rating} onChange={(v) => setFilter("rating", v)} options={FILTERS} />
+            {filtering ? (
+              <button className="ui-btn ui-btn-ghost" type="button" onClick={() => setFilters({ q: "", role: "", rating: "" })}>Reset</button>
+            ) : null}
+            <span className="spacer" />
+            <button
+              className={"ui-btn" + (selectMode ? " is-on" : "")}
+              type="button"
+              aria-pressed={selectMode}
+              onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+            >
+              <Icon name="checkSquare" />{selectMode ? "Done" : "Select"}
+            </button>
+            <Menu
+              label="More actions"
+              items={[
+                { label: "Refresh", icon: <Icon name="refresh" />, onSelect: () => { reload(); } },
+                "sep",
+                { label: "Export JSON backup", icon: <Icon name="download" />, onSelect: exportJSON },
+                { label: "Export CSV", icon: <Icon name="download" />, onSelect: exportCSV },
+              ]}
+            >
+              <Icon name="more" />
+            </Menu>
           </div>
-        </div>
-      ) : (
-        <div className={"crm-board" + (selectMode ? " is-selecting" : "")} id="crm-board">
-          {STAGES.map((stage) => {
-            const items = visible.filter((a) => a.status === stage.id).sort((x, y) => (y.updatedAt || "").localeCompare(x.updatedAt || ""));
-            const allOn = items.length > 0 && items.every((a) => selected.has(a.id));
-            return (
-              <div className="crm-col" key={stage.id} style={{ "--col": stage.color } as React.CSSProperties}>
-                <div className="crm-col-head">
-                  <span className="dot" />
-                  <span className="label">{stage.label}</span>
-                  <span className="count">{items.length}</span>
-                  {selectMode && items.length ? (
-                    <button
-                      type="button"
-                      className="crm-col-select"
-                      onClick={() => setSelected((s) => {
-                        const nx = new Set(s);
-                        items.forEach((a) => (allOn ? nx.delete(a.id) : nx.add(a.id)));
-                        return nx;
-                      })}
+
+          {applicants.length === 0 ? (
+            <div className="state is-boxed">
+              <h3>No applicants yet</h3>
+              <p>Applications land here automatically as soon as someone submits the form on the Recruitment page.</p>
+              <a className="ui-btn" href="/recruitment-demo" target="_blank" rel="noopener">Open the application form <Icon name="external" /></a>
+            </div>
+          ) : (
+            <div className={"crm-board" + (selectMode ? " is-selecting" : "")} id="crm-board">
+              {STAGES.map((stage) => {
+                const items = visible.filter((a) => a.status === stage.id).sort((x, y) => (y.updatedAt || "").localeCompare(x.updatedAt || ""));
+                const allOn = items.length > 0 && items.every((a) => selected.has(a.id));
+                return (
+                  <section className="crm-col" key={stage.id} style={{ "--col": stage.color } as React.CSSProperties} aria-label={stage.label}>
+                    <header className="crm-col-head">
+                      <span className="dot" />
+                      <span className="label">{stage.label}</span>
+                      <span className="count">{items.length}</span>
+                      {selectMode && items.length ? (
+                        <button
+                          type="button"
+                          className="crm-col-select"
+                          onClick={() => setSelected((s) => {
+                            const nx = new Set(s);
+                            items.forEach((a) => (allOn ? nx.delete(a.id) : nx.add(a.id)));
+                            return nx;
+                          })}
+                        >
+                          {allOn ? "None" : "All"}
+                        </button>
+                      ) : null}
+                    </header>
+                    <div
+                      className={"crm-col-body" + (dropTarget === stage.id ? " drop-target" : "")}
+                      data-stage={stage.id}
+                      onDragOver={(e) => { if (selectMode) return; e.preventDefault(); setDropTarget(stage.id); }}
+                      onDragLeave={() => setDropTarget((t) => (t === stage.id ? null : t))}
+                      onDrop={(e) => { e.preventDefault(); setDropTarget(null); setDragging(null); moveTo(e.dataTransfer.getData("text/plain"), stage.id); }}
                     >
-                      {allOn ? "None" : "All"}
-                    </button>
-                  ) : null}
-                </div>
-                <div
-                  className={"crm-col-body" + (dropTarget === stage.id ? " drop-target" : "")}
-                  data-stage={stage.id}
-                  onDragOver={(e) => { if (selectMode) return; e.preventDefault(); setDropTarget(stage.id); }}
-                  onDragLeave={() => setDropTarget((t) => (t === stage.id ? null : t))}
-                  onDrop={(e) => { e.preventDefault(); setDropTarget(null); setDragging(null); moveTo(e.dataTransfer.getData("text/plain"), stage.id); }}
-                >
-                  {items.length === 0 ? <div className="crm-col-empty">{selectMode ? "Empty" : "Drop here"}</div> : null}
-                  {items.map((a) => {
-                    const quick = quickSend(a);
-                    const sent = sentEmails(a);
-                    const sentNow = quick ? sent[quick === "rejectScreen" ? "reject" : quick] : undefined;
-                    const t = voteTally(a.votes);
-                    const dupes = dupesOf(a).length;
-                    const viaSecond = filters.role && a.role !== filters.role && a.roleSecondary === filters.role;
-                    const isSel = selected.has(a.id);
-                    return (
-                      <div
-                        key={a.id}
-                        className={"crm-card" + (dragging === a.id ? " dragging" : "") + (isSel ? " selected" : "")}
-                        draggable={!selectMode}
-                        data-id={a.id}
-                        onClick={() => (selectMode ? toggle(a.id) : setOpenId(a.id))}
-                        onDragStart={(e) => { e.dataTransfer.setData("text/plain", a.id); e.dataTransfer.effectAllowed = "move"; setDragging(a.id); }}
-                        onDragEnd={() => setDragging(null)}
-                      >
-                        <div className="cn">
-                          {selectMode ? <input type="checkbox" className="crm-card-check" checked={isSel} readOnly tabIndex={-1} aria-label={"Select " + a.name} /> : null}
-                          {a.name || "Unnamed"}
-                          {a.secondChoiceFlag ? <span title={"Flagged for 2nd choice: " + a.roleSecondary}> ⭐</span> : null}
-                        </div>
-                        {a.role ? (
-                          <div className="cr">
-                            {viaSecond ? <>{a.roleSecondary} <span className="crm-tag">2nd choice</span></> : a.role}
+                      {items.length === 0 ? <div className="crm-col-empty">{selectMode ? "Empty" : "Drop here"}</div> : null}
+                      {items.map((a) => {
+                        const quick = quickSend(a);
+                        const sent = sentEmails(a);
+                        const sentNow = quick ? sent[quick === "rejectScreen" ? "reject" : quick] : undefined;
+                        const t = voteTally(a.votes);
+                        const dupes = dupesOf(a).length;
+                        const viaSecond = filters.role && a.role !== filters.role && a.roleSecondary === filters.role;
+                        const isSel = selected.has(a.id);
+                        return (
+                          <div
+                            key={a.id}
+                            className={"crm-card" + (dragging === a.id ? " dragging" : "") + (isSel ? " selected" : "")}
+                            draggable={!selectMode}
+                            data-id={a.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={selectMode ? isSel : undefined}
+                            onClick={() => (selectMode ? toggle(a.id) : setOpenId(a.id))}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (selectMode) toggle(a.id); else setOpenId(a.id); } }}
+                            onDragStart={(e) => { e.dataTransfer.setData("text/plain", a.id); e.dataTransfer.effectAllowed = "move"; setDragging(a.id); }}
+                            onDragEnd={() => setDragging(null)}
+                          >
+                            <div className="card-top">
+                              {selectMode ? <span className={"ui-check" + (isSel ? " is-on" : "")} aria-hidden="true"><Icon name="check" size={12} /></span> : null}
+                              <span className="cn">{a.name || "Unnamed"}</span>
+                              {a.secondChoiceFlag ? <span className="card-flag" title={"Flagged for 2nd choice: " + a.roleSecondary}><Icon name="star" size={13} /></span> : null}
+                              {hasResume(a) ? <span className="card-file" title="Resume attached"><Icon name="paperclip" size={13} /></span> : null}
+                            </div>
+                            {a.role ? (
+                              <div className="cr">
+                                {viaSecond ? <>{a.roleSecondary} <span className="crm-tag">2nd choice</span></> : a.role}
+                              </div>
+                            ) : null}
+                            <div className="crm-badges">
+                              {a.votes.length ? (
+                                <span className="crm-badge votes" title={a.votes.map((v) => v.reviewer + ": " + v.vote).join("\n")}>
+                                  {t.yes ? <><i className="v yes" />{t.yes}</> : null}
+                                  {t.maybe ? <><i className="v maybe" />{t.maybe}</> : null}
+                                  {t.no ? <><i className="v no" />{t.no}</> : null}
+                                </span>
+                              ) : null}
+                              {sent.invite ? <span className="crm-badge sent" title={"Invite emailed " + fmtDateTime(sent.invite)}><Icon name="mail" size={12} />Invite · {ago(sent.invite)}</span> : null}
+                              {sent.offer ? <span className="crm-badge sent" title={"Offer emailed " + fmtDateTime(sent.offer)}><Icon name="mail" size={12} />Offer · {ago(sent.offer)}</span> : null}
+                              {sent.reject ? <span className="crm-badge sent" title={"Rejection emailed " + fmtDateTime(sent.reject)}><Icon name="mail" size={12} />Rejection · {ago(sent.reject)}</span> : null}
+                              {a.conflicts.length ? (
+                                <span className="crm-badge coi" title={"Knows this applicant (vote not counted):\n" + a.conflicts.map((c) => c.reviewer).join("\n")}>
+                                  <Icon name="alert" size={12} />Conflict{a.conflicts.length > 1 ? " ×" + a.conflicts.length : ""}
+                                </span>
+                              ) : null}
+                              {dupes ? <span className="crm-badge dup" title="Another application uses this email">Duplicate</span> : null}
+                            </div>
+                            <div className="cmeta">
+                              <span>{fmtDate(a.createdAt)}</span>
+                              <span className="spacer" />
+                              {a.rating ? <RatingPill rating={a.rating} /> : null}
+                            </div>
+                            {quick && !sentNow && !selectMode ? (
+                              <button className="ui-btn is-block crm-card-action" type="button" onClick={(e) => { e.stopPropagation(); openSend(a, quick); }} onKeyDown={(e) => e.stopPropagation()}>
+                                <Icon name="mail" />{SEND_META[quick].button}
+                              </button>
+                            ) : null}
                           </div>
-                        ) : null}
-                        <div className="crm-badges">
-                          {a.votes.length ? (
-                            <span className="crm-badge votes" title={a.votes.map((v) => v.reviewer + ": " + v.vote).join("\n")}>
-                              {t.yes ? "👍" + t.yes : ""}{t.maybe ? " 🤔" + t.maybe : ""}{t.no ? " 👎" + t.no : ""}
-                            </span>
-                          ) : null}
-                          {sent.invite ? <span className="crm-badge sent" title={"Invite emailed " + fmtDateTime(sent.invite)}>✉ Invite {ago(sent.invite)}</span> : null}
-                          {sent.offer ? <span className="crm-badge sent" title={"Offer emailed " + fmtDateTime(sent.offer)}>✉ Offer {ago(sent.offer)}</span> : null}
-                          {sent.reject ? <span className="crm-badge sent" title={"Rejection emailed " + fmtDateTime(sent.reject)}>✉ Rejection {ago(sent.reject)}</span> : null}
-                          {a.conflicts.length ? (
-                            <span className="crm-badge coi" title={"Knows this applicant (vote not counted):\n" + a.conflicts.map((c) => c.reviewer).join("\n")}>
-                              ⚠ Conflict{a.conflicts.length > 1 ? " ×" + a.conflicts.length : ""}
-                            </span>
-                          ) : null}
-                          {dupes ? <span className="crm-badge dup" title="Another application uses this email">Duplicate</span> : null}
-                        </div>
-                        <div className="cmeta">
-                          {hasResume(a) ? <span className="crm-icon" title="Resume attached">📄</span> : null}
-                          <span className="spacer" />
-                          {a.rating ? <RatingPill rating={a.rating} /> : <span>{fmtDate(a.createdAt)}</span>}
-                        </div>
-                        {quick && !sentNow && !selectMode ? (
-                          <button className="btn btn-primary btn-sm crm-card-action" type="button" onClick={(e) => { e.stopPropagation(); openSend(a, quick); }}>
-                            {SEND_META[quick].button}
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
-
       </div>
 
       {selectMode && view === "board" ? (
-        <div className="crm-bulkbar" role="toolbar" aria-label="Bulk actions">
-          <strong>{selected.size} selected</strong>
-          <select
-            aria-label="Move selected to stage"
+        <div className="bulkbar" role="toolbar" aria-label="Bulk actions">
+          <span className="bulk-count"><strong>{selected.size}</strong> selected</span>
+          <span className="bulk-sep" aria-hidden="true" />
+          <Select
+            label="Move selected to stage"
             value=""
+            placeholder="Move to…"
             disabled={!selected.size}
-            onChange={(e) => { const v = e.target.value as StageId; e.target.value = ""; if (v) bulkMove(v); }}
+            options={STAGES.map((st) => ({ value: st.id, label: st.label, dot: st.color }))}
+            onChange={(v) => { if (v) bulkMove(v as StageId); }}
+          />
+          <Menu
+            label="Email selected"
+            className="ui-btn ui-btn-primary"
+            align="start"
+            disabled={!selected.size}
+            items={[
+              { label: "Interview invite", onSelect: () => setBulk("invite") },
+              { label: "Offer", onSelect: () => setBulk("offer") },
+              { label: "Rejection", onSelect: () => setBulk("reject") },
+            ]}
           >
-            <option value="">Move to…</option>
-            {STAGES.map((st) => <option key={st.id} value={st.id}>{st.label}</option>)}
-          </select>
-          <details className="crm-menu crm-menu-up" ref={bulkMenuRef}>
-            <summary className={"btn btn-primary btn-sm" + (selected.size ? "" : " is-disabled")} aria-disabled={!selected.size}>Email…</summary>
-            {selected.size ? (
-              <div className="crm-menu-list">
-                <button type="button" onClick={() => { closeBulkMenu(); setBulk("invite"); }}>Interview invite</button>
-                <button type="button" onClick={() => { closeBulkMenu(); setBulk("offer"); }}>Offer</button>
-                <button type="button" onClick={() => { closeBulkMenu(); setBulk("reject"); }}>Rejection</button>
-              </div>
-            ) : null}
-          </details>
-          <span className="spacer" />
-          <button className="btn btn-secondary btn-sm" type="button" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button>
-          <button className="btn btn-secondary btn-sm" type="button" onClick={exitSelect}>Done</button>
+            <Icon name="mail" />Email
+          </Menu>
+          <span className="bulk-sep" aria-hidden="true" />
+          <button className="ui-btn ui-btn-ghost" type="button" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button>
+          <button className="ui-icon-btn" type="button" aria-label="Exit selection" title="Exit selection" onClick={exitSelect}><Icon name="x" /></button>
         </div>
       ) : null}
 
@@ -591,6 +674,6 @@ export function Crm() {
         />
       ) : null}
       {settingsModal}
-    </>
+    </div>
   );
 }

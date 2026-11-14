@@ -81,6 +81,16 @@ export const INTERVIEW_STAGES: StageId[] = ["booked", "interviewed", "waitlist",
 export const interviewUnlocked = (status: StageId, notes: Note[] = []) =>
   INTERVIEW_STAGES.includes(status) || notes.some((n) => n.type === "interview");
 export const withScheme = (u: string) => (/^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u : "https://" + u);
+/** An applicant-typed link as a safe http(s) URL, or null. Anything else (javascript:, data:, …)
+ *  is shown as plain text instead of becoming a clickable link in the committee's session. */
+export function safeLink(u: string): string | null {
+  try {
+    const url = new URL(withScheme(u.trim()));
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 export function fmtDate(iso: string) {
   const d = new Date(iso);

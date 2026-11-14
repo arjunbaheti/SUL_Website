@@ -6,7 +6,7 @@ import {
   DEFAULT_SETTINGS, EMAIL_KEYS, PLACEHOLDERS, fillTemplate, saveSettings,
   type EmailKey, type PortalSettings, type SettingsMeta,
 } from "@/lib/settings";
-import { Modal, toast } from "./ui";
+import { Modal, confirmDialog, toast } from "./ui";
 
 const TABS = [
   { id: "emails", label: "Emails" },
@@ -63,8 +63,8 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
   const replyOk = !s.replyTo.trim() || /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(s.replyTo.trim());
   const inviteMissingLink = !s.templates.invite.body.includes("{link}");
 
-  function close() {
-    if (dirty && !window.confirm("Discard your unsaved settings changes?")) return;
+  async function close() {
+    if (dirty && !(await confirmDialog({ title: "Discard unsaved changes?", body: "Your edits to the settings haven't been saved.", confirmLabel: "Discard", danger: true }))) return;
     onClose();
   }
 
@@ -83,6 +83,7 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
   return (
     <Modal
       title="Settings"
+      size="lg"
       onClose={close}
       foot={
         <>
@@ -90,8 +91,8 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
             {meta.updatedAt ? <>Last saved {fmtDateTime(meta.updatedAt)}{meta.updatedBy ? " by " + meta.updatedBy : ""}</> : "Shared by all committee reviewers"}
           </span>
           <span className="spacer" />
-          <button className="btn btn-secondary btn-sm" type="button" onClick={close}>Cancel</button>
-          <button className="btn btn-primary btn-sm" type="button" disabled={busy || !dirty || meta.missingTable} onClick={save}>
+          <button className="ui-btn" type="button" onClick={close}>Cancel</button>
+          <button className="ui-btn ui-btn-primary" type="button" disabled={busy || !dirty || meta.missingTable} onClick={save}>
             {busy ? "Saving…" : "Save changes"}
           </button>
         </>
@@ -161,11 +162,11 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
             ))}
           </div>
           <div className="crm-settings-actions">
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => setPreview((v) => !v)}>
+            <button className="ui-btn" type="button" onClick={() => setPreview((v) => !v)}>
               {preview ? "Edit" : "Preview with sample applicant"}
             </button>
             <button
-              className="btn btn-secondary btn-sm"
+              className="ui-btn"
               type="button"
               disabled={isDefault}
               onClick={() => setS((p) => ({ ...p, templates: { ...p.templates, [kind]: { ...DEFAULT_SETTINGS.templates[kind] } } }))}
@@ -227,8 +228,8 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
           <div className="crm-data-step">
             <strong>1. Download a backup</strong>
             <p>Saves every applicant, note and vote as JSON and CSV (files themselves aren&apos;t included).</p>
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => { onExport(); setExported(true); }}>
-              {exported ? "Downloaded ✓ (download again)" : "Download backup"}
+            <button className="ui-btn" type="button" onClick={() => { onExport(); setExported(true); }}>
+              {exported ? "Downloaded · download again" : "Download backup"}
             </button>
           </div>
           <div className={"crm-data-step danger" + (exported ? "" : " is-locked")}>
@@ -246,7 +247,7 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
               {(["files", "everything"] as PurgeMode[]).map((m) => (
                 <button
                   key={m}
-                  className={"btn btn-sm " + (m === "everything" ? "btn-danger" : "btn-secondary")}
+                  className={"ui-btn" + (m === "everything" ? " ui-btn-danger" : "")}
                   type="button"
                   disabled={!exported || confirmText !== "DELETE" || !!purging}
                   onClick={async () => {

@@ -1,42 +1,408 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "./icons";
 
-// Modal + toast with the original portal's markup (.crm-modal / .crm-panel), styled by app/portal.css.
+// The portal's own UI kit: dialogs, sheets, dropdowns, menus, confirms, toasts and the theme
+// switch. Everything renders on <body> and is styled by app/portal.css, so it follows the
+// dashboard's light/dark tokens instead of the browser's native controls.
 
-export function Modal({ title, onClose, children, foot }: {
-  title: string; onClose: () => void; children: React.ReactNode; foot: React.ReactNode;
-}) {
+/* ---------------------------------------------------------------------------------------------
+ * Layers: dialogs and popovers stack, and only the top-most one reacts to Escape.
+ * ------------------------------------------------------------------------------------------- */
+const layers: number[] = [];
+let layerSeq = 0;
+
+function useLayer(onEscape: () => void) {
+  const esc = useRef(onEscape);
+  useEffect(() => { esc.current = onEscape; });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const id = ++layerSeq;
+    layers.push(id);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || layers[layers.length - 1] !== id) return;
+      e.preventDefault();
+      esc.current();
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  // Render on <body>: inside <main> the modal is trapped in main's stacking layer, so the
-  // footer (same layer, later in the page) painted over the bottom of it.
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const i = layers.indexOf(id);
+      if (i >= 0) layers.splice(i, 1);
+    };
+  }, []);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Modal: a centred dialog, or a sheet that slides in from the right (variant="sheet").
+ * ------------------------------------------------------------------------------------------- */
+export function Modal({ title, subtitle, onClose, children, foot, variant = "dialog", size = "md" }: {
+  title: ReactNode; subtitle?: ReactNode; onClose: () => void; children: ReactNode; foot?: ReactNode;
+  variant?: "dialog" | "sheet"; size?: "sm" | "md" | "lg";
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  const labelId = useId();
+  useLayer(onClose);
+
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus({ preventScroll: true });
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+      prev?.focus?.({ preventScroll: true });
+    };
+  }, []);
+
+  // Rendered on <body> so nothing on the page can paint over it.
   return createPortal(
-    <div className="crm-modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="crm-panel" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="crm-panel-head">
-          <h3>{title}</h3>
-          <button className="crm-close" type="button" aria-label="Close" onClick={onClose}>×</button>
-        </div>
-        <div className="crm-panel-body">{children}</div>
-        <div className="crm-panel-foot">{foot}</div>
+    <div className={"ui-overlay is-" + variant} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={panel} tabIndex={-1} className={`ui-panel is-${variant} is-${size}`} role="dialog" aria-modal="true" aria-labelledby={labelId}>
+        <header className="ui-panel-head">
+          <div className="ui-panel-title">
+            <h2 id={labelId}>{title}</h2>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          <button className="ui-icon-btn" type="button" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
+        </header>
+        <div className="ui-panel-body">{children}</div>
+        {foot ? <footer className="ui-panel-foot">{foot}</footer> : null}
       </div>
     </div>,
     document.body,
   );
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Popover: positions itself under (or above, if there's no room) an anchor element.
+ * ------------------------------------------------------------------------------------------- */
+const GAP = 6, MARGIN = 8;
+
+function Popover({ anchor, onClose, align = "start", matchWidth = false, className = "", children, ...rest }: {
+  anchor: RefObject<HTMLElement | null>; onClose: () => void; align?: "start" | "end"; matchWidth?: boolean;
+  className?: string; children: ReactNode;
+} & Omit<React.HTMLAttributes<HTMLDivElement>, "className" | "children">) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayer(() => { onClose(); anchor.current?.focus(); });
+
+  // Placement reads layout, so it runs after every render (cheap) and on scroll/resize.
+  const placeRef = useRef<() => void>(() => {});
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+    const place = () => {
+      const a = anchor.current?.getBoundingClientRect();
+      const el = ref.current;
+      if (!a || !el) return;
+      if (matchWidth) el.style.minWidth = a.width + "px";
+      el.style.maxHeight = "";
+      const below = window.innerHeight - a.bottom - GAP - MARGIN;
+      const above = a.top - GAP - MARGIN;
+      let h = el.offsetHeight;
+      const up = h > below && above > below;
+      const room = Math.max(120, up ? above : below);
+      if (h > room) { el.style.maxHeight = room + "px"; h = room; }
+      const w = el.offsetWidth;
+      let left = align === "end" ? a.right - w : a.left;
+      left = Math.min(Math.max(MARGIN, left), window.innerWidth - w - MARGIN);
+      el.style.top = (up ? a.top - GAP - h : a.bottom + GAP) + "px";
+      el.style.left = left + "px";
+      el.style.visibility = "visible";
+      el.dataset.side = up ? "top" : "bottom";
+    };
+    placeRef.current = place;
+    place();
+  });
+
+  useEffect(() => {
+    const onScroll = (e: Event) => { if (!ref.current?.contains(e.target as Node)) placeRef.current(); };
+    const onResize = () => placeRef.current();
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !anchor.current?.contains(t)) closeRef.current();
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [anchor]);
+
+  return createPortal(<div ref={ref} className={"ui-pop " + className} {...rest}>{children}</div>, document.body);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * List: the keyboard-driven option list shared by Select and Menu.
+ * ------------------------------------------------------------------------------------------- */
+type Row = {
+  key: string; label: ReactNode; text: string; icon?: ReactNode; dot?: string; hint?: ReactNode;
+  group?: string; selected?: boolean; danger?: boolean; disabled?: boolean; sep?: boolean;
+};
+
+function List({ anchor, rows, kind, onPick, onClose, align, matchWidth, label }: {
+  anchor: RefObject<HTMLButtonElement | null>; rows: Row[]; kind: "listbox" | "menu";
+  onPick: (key: string) => void; onClose: () => void; align?: "start" | "end"; matchWidth?: boolean; label: string;
+}) {
+  const id = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  const usable = rows.map((r, i) => (!r.sep && !r.disabled ? i : -1)).filter((i) => i >= 0);
+  const [active, setActive] = useState(() => {
+    const sel = rows.findIndex((r) => r.selected && !r.disabled);
+    return sel >= 0 ? sel : usable[0] ?? -1;
+  });
+  const typed = useRef({ text: "", at: 0 });
+
+  useEffect(() => { listRef.current?.focus({ preventScroll: true }); }, []);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  const move = (delta: number) => {
+    if (!usable.length) return;
+    const at = usable.indexOf(active);
+    const next = at < 0 ? (delta > 0 ? 0 : usable.length - 1) : Math.min(usable.length - 1, Math.max(0, at + delta));
+    setActive(usable[next]);
+  };
+  const pick = (i: number) => {
+    const r = rows[i];
+    if (!r || r.sep || r.disabled) return;
+    onClose();
+    anchor.current?.focus();
+    onPick(r.key);
+  };
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(usable[0] ?? -1); }
+    else if (e.key === "End") { e.preventDefault(); setActive(usable[usable.length - 1] ?? -1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(active); }
+    else if (e.key === "Tab") { onClose(); }
+    else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Type-ahead: jump to the first option starting with what was typed.
+      const now = Date.now();
+      typed.current = { text: (now - typed.current.at < 700 ? typed.current.text : "") + e.key.toLowerCase(), at: now };
+      const hit = usable.find((i) => rows[i].text.toLowerCase().startsWith(typed.current.text));
+      if (hit !== undefined) setActive(hit);
+    }
+  }
+
+  return (
+    <Popover anchor={anchor} onClose={onClose} align={align} matchWidth={matchWidth} className={"ui-list is-" + kind}>
+      <div
+        ref={listRef}
+        id={id}
+        role={kind}
+        aria-label={label}
+        tabIndex={-1}
+        aria-activedescendant={active >= 0 ? `${id}-${active}` : undefined}
+        onKeyDown={onKeyDown}
+        className="ui-list-inner"
+      >
+        {rows.map((r, i) => {
+          if (r.sep) return <div key={r.key} className="ui-list-sep" role="separator" />;
+          const prev = rows[i - 1];
+          const head = r.group && (!prev || prev.sep || prev.group !== r.group) ? r.group : null;
+          return (
+            <div key={r.key} role="presentation">
+              {head ? <div className="ui-list-group" role="presentation">{head}</div> : null}
+              <div
+                id={`${id}-${i}`}
+                data-i={i}
+                role={kind === "listbox" ? "option" : "menuitem"}
+                aria-selected={kind === "listbox" ? !!r.selected : undefined}
+                aria-disabled={r.disabled || undefined}
+                className={"ui-list-item" + (i === active ? " is-active" : "") + (r.danger ? " is-danger" : "") + (r.selected ? " is-selected" : "")}
+                onMouseMove={() => { if (!r.disabled && active !== i) setActive(i); }}
+                onClick={() => pick(i)}
+              >
+                {r.dot ? <span className="ui-dot" style={{ background: r.dot }} /> : r.icon ? <span className="ui-list-icon">{r.icon}</span> : null}
+                <span className="ui-list-label">{r.label}</span>
+                {r.hint ? <span className="ui-list-hint">{r.hint}</span> : null}
+                {kind === "listbox" ? <span className="ui-list-check">{r.selected ? <Icon name="check" size={14} /> : null}</span> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Popover>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Select: replaces the native <select>.
+ * ------------------------------------------------------------------------------------------- */
+export type SelectOption = { value: string; label: string; group?: string; dot?: string; icon?: ReactNode; hint?: ReactNode };
+
+export function Select({ value, onChange, options, label, placeholder, disabled, className = "", block = false, align = "start", prefix }: {
+  value: string; onChange: (v: string) => void; options: SelectOption[]; label: string;
+  placeholder?: string; disabled?: boolean; className?: string; block?: boolean; align?: "start" | "end"; prefix?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const current = options.find((o) => o.value === value);
+  const close = useCallback(() => setOpen(false), []);
+  const shown = current && (current.value !== "" || !placeholder) ? current : null;
+
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className={"ui-select" + (block ? " is-block" : "") + (open ? " is-open" : "") + (shown ? "" : " is-placeholder") + (className ? " " + className : "")}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (["ArrowDown", "ArrowUp"].includes(e.key)) { e.preventDefault(); setOpen(true); } }}
+      >
+        {prefix ? <span className="ui-select-prefix">{prefix}</span> : null}
+        {shown?.dot ? <span className="ui-dot" style={{ background: shown.dot }} /> : shown?.icon ? <span className="ui-list-icon">{shown.icon}</span> : null}
+        <span className="ui-select-value">{shown ? shown.label : placeholder ?? current?.label ?? ""}</span>
+        <Icon name="chevronUpDown" size={14} className="ui-select-chev" />
+      </button>
+      {open ? (
+        <List
+          anchor={btn}
+          kind="listbox"
+          label={label}
+          align={align}
+          matchWidth
+          onClose={close}
+          onPick={onChange}
+          rows={options.map((o) => ({
+            key: o.value, label: o.label, text: o.label, group: o.group, dot: o.dot, icon: o.icon, hint: o.hint,
+            selected: o.value === value,
+          }))}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Menu: a button that opens a list of actions.
+ * ------------------------------------------------------------------------------------------- */
+export type MenuItem =
+  | { label: string; onSelect: () => void; icon?: ReactNode; hint?: ReactNode; danger?: boolean; disabled?: boolean; checked?: boolean }
+  | "sep"
+  | { heading: string };
+
+export function Menu({ label, items, children, className = "ui-icon-btn", align = "end", disabled }: {
+  label: string; items: MenuItem[]; children: ReactNode; className?: string; align?: "start" | "end"; disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  const actions = new Map<string, () => void>();
+  let group: string | undefined;
+  const rows: Row[] = [];
+  items.forEach((it, i) => {
+    if (it === "sep") { rows.push({ key: "sep" + i, label: null, text: "", sep: true }); group = undefined; return; }
+    if ("heading" in it) { group = it.heading; return; }
+    const key = "i" + i;
+    actions.set(key, it.onSelect);
+    rows.push({
+      key, label: it.label, text: it.label, hint: it.hint, danger: it.danger, disabled: it.disabled, group,
+      icon: it.checked !== undefined ? <span className="ui-list-tick">{it.checked ? <Icon name="check" size={14} /> : null}</span> : it.icon,
+    });
+  });
+
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className={className + (open ? " is-open" : "")}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        title={className.includes("ui-icon-btn") ? label : undefined}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); } }}
+      >
+        {children}
+      </button>
+      {open ? <List anchor={btn} kind="menu" label={label} align={align} onClose={close} onPick={(k) => actions.get(k)?.()} rows={rows} /> : null}
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Segmented control: a small set of mutually exclusive choices shown side by side.
+ * ------------------------------------------------------------------------------------------- */
+export function Segmented<T extends string>({ value, onChange, options, label, size = "md" }: {
+  value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: ReactNode }[]; label: string; size?: "sm" | "md";
+}) {
+  return (
+    <div className={"ui-seg is-" + size} role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}>
+          {o.icon}{o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Confirm: an in-house replacement for window.confirm. `await confirmDialog({...})`.
+ * ------------------------------------------------------------------------------------------- */
+type ConfirmOpts = { title: string; body?: ReactNode; confirmLabel?: string; danger?: boolean };
+type ConfirmReq = ConfirmOpts & { resolve: (ok: boolean) => void };
+const confirmHosts = new Set<(r: ConfirmReq) => void>();
+
+export function confirmDialog(opts: ConfirmOpts): Promise<boolean> {
+  if (!confirmHosts.size) return Promise.resolve(window.confirm(opts.title));
+  return new Promise((resolve) => confirmHosts.forEach((h) => h({ ...opts, resolve })));
+}
+
+function ConfirmHost() {
+  const [req, setReq] = useState<ConfirmReq | null>(null);
+  useEffect(() => {
+    const host = (r: ConfirmReq) => setReq(r);
+    confirmHosts.add(host);
+    return () => { confirmHosts.delete(host); };
+  }, []);
+  if (!req) return null;
+  const done = (ok: boolean) => { req.resolve(ok); setReq(null); };
+  return (
+    <Modal
+      title={req.title}
+      size="sm"
+      onClose={() => done(false)}
+      foot={
+        <>
+          <span className="spacer" />
+          <button className="ui-btn" type="button" onClick={() => done(false)}>Cancel</button>
+          <button autoFocus className={"ui-btn " + (req.danger ? "ui-btn-danger" : "ui-btn-primary")} type="button" onClick={() => done(true)}>
+            {req.confirmLabel ?? "Continue"}
+          </button>
+        </>
+      }
+    >
+      {req.body ? <p className="ui-confirm-body">{req.body}</p> : null}
+    </Modal>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Toasts.
+ * ------------------------------------------------------------------------------------------- */
 type Listener = (text: string) => void;
 const listeners = new Set<Listener>();
 export function toast(text: string) {
   listeners.forEach((l) => l(text));
 }
 
-export function Toaster() {
+function Toaster() {
   const [text, setText] = useState("");
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -45,34 +411,74 @@ export function Toaster() {
       setText(t);
       setVisible(true);
       clearTimeout(timer);
-      timer = setTimeout(() => setVisible(false), Math.max(2200, t.length * 60));
+      timer = setTimeout(() => setVisible(false), Math.max(2400, t.length * 60));
     };
     listeners.add(show);
     return () => { listeners.delete(show); clearTimeout(timer); };
   }, []);
   if (!text) return null;
   return createPortal(
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)", zIndex: 200,
-        background: "#101a30", border: "1px solid rgba(255,255,255,0.22)", color: "#f4f7ff",
-        padding: "0.6rem 1rem", borderRadius: 10, fontSize: "0.85rem", boxShadow: "0 12px 30px rgba(0,0,0,0.5)",
-        opacity: visible ? 1 : 0, transition: "opacity 0.2s ease",
-      }}
-    >
-      {text}
-    </div>,
+    <div className={"ui-toast" + (visible ? " is-visible" : "")} role="status" aria-live="polite">{text}</div>,
     document.body,
   );
 }
 
-export async function copyText(text: string, message = "Invite copied to clipboard") {
+/** Mounts the toast and confirm hosts once for the whole portal. */
+export function PortalHosts() {
+  return <><Toaster /><ConfirmHost /></>;
+}
+
+export async function copyText(text: string, message = "Copied to clipboard") {
   try {
     await navigator.clipboard.writeText(text);
     toast(message);
   } catch {
-    window.prompt("Copy this invite:", text);
+    window.prompt("Copy this:", text);
   }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Theme: System / Light / Dark, remembered per browser. The <html data-theme> attribute is set
+ * before first paint by the inline script in app/portal/page.tsx, so there's no flash.
+ * ------------------------------------------------------------------------------------------- */
+export type ThemePref = "system" | "light" | "dark";
+export const THEME_KEY = "sul-portal-theme";
+
+function readTheme(): ThemePref {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    return "system";
+  }
+}
+
+export function applyTheme(pref: ThemePref) {
+  const d = document.documentElement;
+  if (pref === "system") delete d.dataset.theme;
+  else d.dataset.theme = pref;
+}
+
+export function useTheme() {
+  const [pref, setPref] = useState<ThemePref>(readTheme);
+  const set = useCallback((p: ThemePref) => {
+    setPref(p);
+    applyTheme(p);
+    try {
+      if (p === "system") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, p);
+    } catch { /* private mode: still applies for this visit */ }
+  }, []);
+  return [pref, set] as const;
+}
+
+/** Marks the page as the portal app while mounted, so portal styles apply and the public site's
+ *  cursor effects switch off. */
+export function usePortalDocument() {
+  useEffect(() => {
+    const d = document.documentElement;
+    d.dataset.app = "portal";
+    applyTheme(readTheme());
+    return () => { delete d.dataset.app; delete d.dataset.theme; };
+  }, []);
 }

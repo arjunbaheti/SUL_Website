@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import {
   RATINGS, STAGES, STAGE_BY_ID, fmtDate, fmtDateTime, fmtSize, interviewUnlocked, noteFromRow, voteTally,
-  withScheme, type Applicant, type Note, type Conflict, type RatingId, type StageId, type Vote,
+  safeLink, type Applicant, type Note, type Conflict, type RatingId, type StageId, type Vote,
 } from "@/lib/portal";
 import { FileViewer } from "./file-viewer";
-import { Modal, toast } from "./ui";
+import { Icon } from "./icons";
+import { Modal, Select, confirmDialog, toast } from "./ui";
 
 // Fields the committee can edit -> database column. Only changed fields are sent, so two
 // reviewers editing different fields don't clobber each other.
@@ -26,7 +27,7 @@ function changes(orig: Applicant, draft: Applicant) {
   return out;
 }
 
-const VOTE_LABEL: Record<Vote["vote"], string> = { yes: "👍 Yes", maybe: "🤔 Maybe", no: "👎 No" };
+const VOTE_LABEL: Record<Vote["vote"], string> = { yes: "Yes", maybe: "Maybe", no: "No" };
 
 type MyVote = Vote["vote"] | "conflict" | "";
 
@@ -66,8 +67,8 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
       : "Couldn't save: " + error.message);
   }
 
-  function toggleConflict(on: boolean) {
-    if (on && hasVote(mine) && !window.confirm("Declaring a conflict removes your " + mine + " vote. Continue?")) return;
+  async function toggleConflict(on: boolean) {
+    if (on && hasVote(mine) && !(await confirmDialog({ title: "Declare a conflict of interest?", body: "This removes your " + mine + " vote. The rest of the committee will see that you know this applicant.", confirmLabel: "Declare conflict" }))) return;
     save(on ? "conflict" : "");
   }
 
@@ -81,7 +82,7 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
             title={iConflict ? "You've declared a conflict of interest, so you can't vote" : undefined}
             onClick={() => save(v === mine ? "" : v)} // clicking your current vote clears it
           >
-            {VOTE_LABEL[v]}
+            <span className={"v " + v} aria-hidden="true" />{VOTE_LABEL[v]}
           </button>
         ))}
       </div>
@@ -91,7 +92,7 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
             <span className="crm-vote-tally">{t.yes} yes · {t.maybe} maybe · {t.no} no</span>
             {votes.map((v) => (
               <span key={v.reviewer} className={"crm-vote-chip " + v.vote} title={v.updatedAt ? "Voted " + fmtDate(v.updatedAt) : undefined}>
-                {VOTE_LABEL[v.vote].split(" ")[0]} {v.reviewer === me ? "You" : v.reviewer}
+                <i className={"v " + v.vote} aria-hidden="true" />{v.reviewer === me ? "You" : v.reviewer}
               </span>
             ))}
           </>
@@ -99,9 +100,10 @@ function Screening({ a, me }: { a: Applicant; me: string }) {
       </div>
       {conflicts.length ? (
         <div className="crm-coi-list" role="note">
-          ⚠ Conflict of interest declared by{" "}
+          <Icon name="alert" size={14} />
+          <span>Conflict of interest declared by{" "}
           {conflicts.map((c) => (c.reviewer === me ? "you" : c.reviewer)).join(", ")}.
-          {" "}{conflicts.length === 1 ? "That vote isn" : "Those votes aren"}&apos;t counted. Consider leaving the decision and the interview to someone else.
+          {" "}{conflicts.length === 1 ? "That vote isn" : "Those votes aren"}&apos;t counted. Consider leaving the decision and the interview to someone else.</span>
         </div>
       ) : null}
       <label className="crm-coi">
@@ -121,7 +123,10 @@ function Submission({ a }: { a: Applicant }) {
   if (a.degree) rows.push(["Degree", a.degree]);
   if (a.yearLevel) rows.push(["Expected graduation", a.yearLevel]);
   if (a.roleSecondary) rows.push(["Second choice", a.roleSecondary]);
-  if (a.linkedin) rows.push(["Link", <a key="l" href={withScheme(a.linkedin)} target="_blank" rel="noopener noreferrer">{a.linkedin}</a>]);
+  if (a.linkedin) {
+    const href = safeLink(a.linkedin);
+    rows.push(["Link", href ? <a key="l" href={href} target="_blank" rel="noopener noreferrer">{a.linkedin}</a> : a.linkedin]);
+  }
   if (a.statement) rows.push(["Why join", <div key="w" className="crm-sub-statement">{a.statement}</div>]);
   if (a.experience) rows.push(["Skills & experience", <div key="s" className="crm-sub-statement">{a.experience}</div>]);
   if (a.questions) rows.push(["Questions", <div key="q" className="crm-sub-statement">{a.questions}</div>]);
@@ -130,13 +135,13 @@ function Submission({ a }: { a: Applicant }) {
     rows.push(["Files", (
       <div className="crm-files" key="f">
         {a.files.map((f) => (
-          <button key={f.path} type="button" className="crm-file" onClick={() => setViewing(f.path)}>
-            <span className="fi">{f.kind === "resume" ? "📄 Resume" : "📎 Attachment"}</span>
+          <button key={f.path} type="button" className={"crm-file" + (viewing === f.path ? " is-viewing" : "")} aria-pressed={viewing === f.path} onClick={() => setViewing(viewing === f.path ? null : f.path)}>
+            <span className="fi"><Icon name={f.kind === "resume" ? "file" : "paperclip"} size={14} />{f.kind === "resume" ? "Resume" : "Attachment"}</span>
             <span className="fn">{f.name || "file"}</span>
             <span className="fs">{fmtSize(f.size)}</span>
           </button>
         ))}
-        {viewing ? <FileViewer files={a.files} startPath={viewing} applicantName={a.name || "Applicant"} onClose={() => setViewing(null)} /> : null}
+        {viewing ? <FileViewer key={viewing} files={a.files} startPath={viewing} applicantName={a.name || "Applicant"} onClose={() => setViewing(null)} /> : null}
       </div>
     )]);
   }
@@ -178,7 +183,7 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
       <div className="crm-field" style={{ margin: 0 }}>
         <textarea placeholder={placeholder} value={text} onChange={(e) => setText(e.target.value)} />
       </div>
-      <button className="btn btn-secondary btn-sm" type="button" onClick={() => {
+      <button className="ui-btn" type="button" disabled={!text.trim()} onClick={() => {
         const v = text.trim();
         if (!v) return;
         onAdd(v);
@@ -284,7 +289,12 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
 
   async function remove() {
     const n = a.files.length;
-    if (!window.confirm("Delete " + (d.name || "this applicant") + (n ? " and their " + n + " attached file" + (n > 1 ? "s" : "") : "") + "? This cannot be undone.")) return;
+    if (!(await confirmDialog({
+      title: "Delete " + (d.name || "this applicant") + "?",
+      body: (n ? "Their application, notes, votes and " + n + " attached file" + (n > 1 ? "s" : "") : "Their application, notes and votes") + " will be permanently removed. This can't be undone.",
+      confirmLabel: "Delete applicant",
+      danger: true,
+    }))) return;
     const db = portalClient();
     // Delete the row first (notes go with it via ON DELETE CASCADE), then the files.
     const { data, error } = await db.from("applications").delete().eq("id", a.id).select("id");
@@ -299,16 +309,24 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
 
   return (
     <Modal
-      title="Applicant"
+      variant="sheet"
+      title={a.name || "Unnamed applicant"}
+      subtitle={
+        <span className="sheet-sub">
+          <span className="stage-chip" style={{ "--col": STAGE_BY_ID[d.status].color } as React.CSSProperties}><span className="ui-dot" />{STAGE_BY_ID[d.status].label}</span>
+          {a.role ? <span>{a.role}</span> : null}
+          {a.createdAt ? <span>Applied {fmtDate(a.createdAt)}</span> : null}
+        </span>
+      }
       onClose={close}
       foot={
         <>
-          <button className="link-danger" type="button" onClick={remove}>Delete</button>
+          <button className="ui-btn ui-btn-ghost is-danger" type="button" onClick={remove}><Icon name="trash" />Delete</button>
           <span className="spacer" />
           <span className="crm-save-state" role="status" aria-live="polite" data-state={state}>
             {state === "saving" ? "Saving…" : state === "saved" ? "All changes saved" : state === "error" ? "Couldn't save" : "Changes save automatically"}
           </span>
-          <button className="btn btn-primary btn-sm" type="button" onClick={close}>Done</button>
+          <button className="ui-btn ui-btn-primary" type="button" onClick={close}>Done</button>
         </>
       }
     >
@@ -330,7 +348,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
       {a.roleSecondary ? (
         <label className="crm-check" style={{ marginTop: "-0.3rem", marginBottom: "0.9rem" }}>
           <input type="checkbox" checked={d.secondChoiceFlag} onChange={(e) => up("secondChoiceFlag", e.target.checked)} />
-          ⭐ Worth considering for their 2nd choice ({a.roleSecondary})
+          <Icon name="star" size={14} />Worth considering for their 2nd choice ({a.roleSecondary})
         </label>
       ) : null}
       <div className="crm-row">
@@ -348,15 +366,19 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
           <div className="crm-field" style={{ margin: 0 }}>
             <input type="url" placeholder="Paste their zcal link, e.g. https://zcal.co/…" value={d.booking} onChange={(e) => up("booking", e.target.value)} />
           </div>
-          <button className="btn btn-secondary btn-sm" type="button" onClick={sendInvite}>Send invite</button>
+          <button className="ui-btn" type="button" onClick={sendInvite}><Icon name="mail" />Send invite</button>
         </div>
         <div className="crm-help">This link goes into their interview invite. It saves automatically. <strong>Send invite</strong> emails them this link.</div>
       </div>
       <div className="crm-field">
         <label>Stage</label>
-        <select value={d.status} onChange={(e) => up("status", e.target.value as StageId)}>
-          {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
+        <Select
+          block
+          label="Stage"
+          value={d.status}
+          onChange={(v) => up("status", v as StageId)}
+          options={STAGES.map((s) => ({ value: s.id, label: s.label, dot: s.color }))}
+        />
       </div>
       <div className="crm-field">
         <label>Application notes</label>
@@ -366,7 +388,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
       <div className={"crm-interview" + (unlocked ? "" : " is-locked")}>
         <div className="crm-interview-head">
           <label>Interview</label>
-          {unlocked ? null : <span className="crm-lock">🔒 Locked</span>}
+          {unlocked ? null : <span className="crm-lock"><Icon name="lock" size={13} />Locked</span>}
         </div>
         {unlocked ? (
           <>

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import { SEND_META, ago, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
 import { fillTemplate, type PortalSettings } from "@/lib/settings";
-import { Modal, copyText, toast } from "./ui";
+import { Icon } from "./icons";
+import { Modal, confirmDialog, copyText, toast } from "./ui";
 
 /** The endpoint requires a committee session, so we pass the reviewer's access token. */
 export async function sendEmail(to: string, subject: string, text: string, settings: PortalSettings): Promise<string | null> {
@@ -45,7 +46,7 @@ export function SendModal({ a, kind: initialKind, settings, onClose, onSent }: {
   }
 
   async function send() {
-    if (alreadySent && !window.confirm(`${a.name || "This applicant"} was already sent this email ${ago(alreadySent)}. Send it again?`)) return;
+    if (alreadySent && !(await confirmDialog({ title: "Send this email again?", body: `${a.name || "This applicant"} was already sent this email ${ago(alreadySent)}.`, confirmLabel: "Send again" }))) return;
     setBusy(true);
     const err = await sendEmail(a.email, subject, body, settings);
     if (err) { toast("Couldn't send: " + err); setBusy(false); return; }
@@ -60,15 +61,15 @@ export function SendModal({ a, kind: initialKind, settings, onClose, onSent }: {
       onClose={onClose}
       foot={
         <>
-          <button className="btn btn-secondary btn-sm" type="button" onClick={() => copyText(body)}>Copy instead</button>
+          <button className="ui-btn" type="button" onClick={() => copyText(body, "Email text copied")}><Icon name="copy" />Copy text</button>
           <span className="spacer" />
-          <button className="btn btn-secondary btn-sm" type="button" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={send}>{busy ? "Sending…" : "Send email"}</button>
+          <button className="ui-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="ui-btn ui-btn-primary" type="button" disabled={busy} onClick={send}>{busy ? "Sending…" : "Send email"}</button>
         </>
       }
     >
       {alreadySent ? (
-        <p className="crm-settings-warn" role="alert">Already sent {ago(alreadySent)}. Sending again will email them a second time.</p>
+        <p className="crm-settings-warn" role="alert"><Icon name="alert" size={14} />Already sent {ago(alreadySent)}. Sending again will email them a second time.</p>
       ) : null}
       {isRejection ? (
         <div className="crm-seg" role="group" aria-label="Which rejection">
