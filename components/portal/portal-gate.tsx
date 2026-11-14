@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import { Crm } from "./crm";
+import { Splash } from "./splash";
 import { PortalHosts, THEME_KEY, usePortalDocument } from "./ui";
 
 // Sets the portal flag and the saved theme while the HTML is still parsing, so the first paint
@@ -29,6 +30,11 @@ export function PortalGate({ fontClass }: { fontClass: string }) {
   const [state, setState] = useState<"checking" | "out" | "in">("checking");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Opening screen: stays up until we know who's signed in and, if it's a committee member,
+  // their board has loaded. Only shown on the first load of the page.
+  const [boardReady, setBoardReady] = useState(false);
+  const [splash, setSplash] = useState(true);
+  const appReady = state === "out" || (state === "in" && boardReady);
 
   useEffect(() => {
     const db = portalClient();
@@ -83,7 +89,8 @@ export function PortalGate({ fontClass }: { fontClass: string }) {
   return (
     <>
       <ThemeBoot fontClass={fontClass} />
-      {state === "in" ? <Crm /> : (
+      {splash ? <Splash ready={appReady} onDone={() => setSplash(false)} /> : null}
+      {state === "in" ? <Crm onReady={() => setBoardReady(true)} /> : (
         <div className="auth" aria-busy={state === "checking"}>
           <div className="auth-card" hidden={state === "checking"}>
             {/* eslint-disable-next-line @next/next/no-img-element -- tiny static brand mark */}

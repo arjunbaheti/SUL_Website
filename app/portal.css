@@ -457,7 +457,25 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
 .brand-wordmark { display: block; width: auto; filter: var(--logo-filter); }
 .app-brand .brand-wordmark { height: 26px; }
 .app-bar-slash { color: var(--border-strong); font-size: 18px; font-weight: 300; margin: 0 -2px; }
-.app-bar-crumb { color: var(--fg-2); font-size: 13.5px; font-weight: 500; }
+.app-bar-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-left: -4px;
+  padding: 0 6px 0 8px;
+  border: 0;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.app-bar-crumb .ui-icon { color: var(--subtle); }
+.app-bar-crumb:hover, .app-bar-crumb.is-open { background: var(--surface-2); color: var(--fg); }
 .app-tabs { display: flex; gap: 2px; margin-left: 18px; }
 .app-tabs button {
   transition: color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
@@ -530,7 +548,7 @@ html[data-app="portal"] input[type="checkbox"]:disabled { opacity: 0.5; cursor: 
 
 /* ---------- Page header + stats ---------- */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
-.page-head h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.1; }
+.page-head h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.038em; line-height: 1.1; }
 .page-head p { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .live-dot { width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 
@@ -1260,3 +1278,38 @@ i.v, span.v { display: inline-block; width: 7px; height: 7px; border-radius: 50%
 .sheet-nav .ui-icon-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
 
 .sheet-nav .ui-icon-btn { margin: 0; }
+
+/* ---------- Opening screen (components/portal/splash.tsx) ---------- */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 450;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: opacity 0.52s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.52s;
+}
+.splash.is-leaving { opacity: 0; visibility: hidden; pointer-events: none; }
+.splash-logo { position: relative; width: min(300px, 62vw); aspect-ratio: 898 / 315; transition: transform 0.52s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.52s ease; }
+.splash.is-leaving .splash-logo { transform: scale(1.06); filter: blur(2px); }
+.splash-layer {
+  position: absolute;
+  inset: 0;
+  -webkit-mask: url("/img/logo.png") center / contain no-repeat;
+  mask: url("/img/logo.png") center / contain no-repeat;
+}
+.splash-base { background: var(--fg); opacity: 0.1; }
+.splash-fill { background: var(--fg); }
+/* A narrow band of light that rides the leading edge of the fill, only on the letters. */
+.splash-sheen {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(var(--trail), 0.95) 50%, transparent 100%);
+  background-size: 22% 100%;
+  background-repeat: no-repeat;
+  background-position: 0% 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Board title + live network graphic */
+.title-row { display: flex; align-items: center; gap: 14px; }
+.net-glyph { display: block; flex: none; width: 56px; height: 56px; margin: -6px 0; }
+@media (max-width: 560px) { .net-glyph { width: 44px; height: 44px; margin: -4px 0; } .page-head h1 { font-size: 26px; } }
