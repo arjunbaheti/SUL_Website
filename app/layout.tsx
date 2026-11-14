@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CursorTrail } from "@/components/cursor-trail";
 import { Effects } from "@/components/effects";
 import "./site.css";
 
@@ -14,8 +15,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body suppressHydrationWarning>
         <a className="skip-link" href="#main">Skip to content</a>
         {children}
-        {/* The original site's shared effects: nav, reveal, cursor, magnetic buttons, ribbons, counters. */}
+        {/* The original site's shared effects: nav, reveal, magnetic buttons, ribbons, counters. */}
         <Effects />
+        <CursorTrail />
       </body>
     </html>
   );

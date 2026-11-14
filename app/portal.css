@@ -135,8 +135,6 @@ html[data-app="portal"] body {
   overflow-x: hidden;
 }
 html[data-app="portal"] ::selection { background: var(--accent-soft); color: var(--fg); }
-html[data-app="portal"] .cursor-dot,
-html[data-app="portal"] .cursor-ring,
 html[data-app="portal"] .scroll-progress { display: none !important; }
 html[data-app="portal"] :focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 /* Containers that receive focus programmatically (dialogs, open lists) don't need a ring. */
@@ -1205,7 +1203,6 @@ i.v, span.v { display: inline-block; width: 7px; height: 7px; border-radius: 50%
 .hl-device-text small { font-size: 12px; color: var(--muted); }
 
 /* ---------- Polish: motion, tooltips, pointer trail ---------- */
-.cursor-trail { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 500; pointer-events: none; }
 
 @keyframes view-in { from { opacity: 0; transform: translateY(6px); } }
 .app-body > .ins, .app-body > div:not([hidden]) > .page-head { animation: view-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
