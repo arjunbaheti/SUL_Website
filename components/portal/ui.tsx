@@ -57,23 +57,37 @@ export function Modal({ title, subtitle, onClose, children, foot, actions, varia
     const ghost = document.createElement("div");
     ghost.className = "ui-ghost";
     Object.assign(ghost.style, { left: origin.left + "px", top: origin.top + "px", width: origin.width + "px", height: origin.height + "px" });
+    // The SUL wordmark loads up inside the ghost while it grows (same layers as the opening splash).
+    const logo = document.createElement("div");
+    logo.className = "ui-ghost-logo";
+    logo.setAttribute("aria-hidden", "true");
+    const layer = (cls: string) => { const l = document.createElement("div"); l.className = "splash-layer " + cls; logo.appendChild(l); return l; };
+    layer("splash-base");
+    const fillLayer = layer("splash-fill");
+    const sheenLayer = layer("splash-sheen");
+    ghost.appendChild(logo);
     document.body.appendChild(ghost);
     const ease = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+    const GROW = 340;
     const grow = ghost.animate(
       [
         { left: origin.left + "px", top: origin.top + "px", width: origin.width + "px", height: origin.height + "px", borderRadius: "10px" },
         { left: to.left + "px", top: to.top + "px", width: to.width + "px", height: to.height + "px", borderRadius: "0px" },
       ],
-      { duration: 340, easing: ease, fill: "forwards" },
+      { duration: GROW, easing: ease, fill: "forwards" },
     );
+    const fillAnim = fillLayer.animate([{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)" }], { duration: GROW, easing: "ease-in-out", fill: "forwards" });
+    const sheenAnim = sheenLayer.animate([{ backgroundPosition: "0% 0", opacity: 1 }, { backgroundPosition: "100% 0", opacity: 1, offset: 0.9 }, { backgroundPosition: "100% 0", opacity: 0 }], { duration: GROW, easing: "ease-in-out", fill: "forwards" });
     el.style.opacity = "0";
     grow.onfinish = () => {
-      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out", fill: "forwards" }).onfinish = () => {
+      // Crossfade: the logo surface fades out as the application fades in.
+      ghost.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: "ease-out", fill: "forwards" });
+      el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: "ease-out", fill: "forwards" }).onfinish = () => {
         el.style.opacity = "";
         ghost.remove();
       };
     };
-    return () => { grow.cancel(); ghost.remove(); el.style.opacity = ""; };
+    return () => { grow.cancel(); fillAnim.cancel(); sheenAnim.cancel(); ghost.remove(); el.style.opacity = ""; };
   }, [fromOrigin, origin]);
 
   useEffect(() => {
