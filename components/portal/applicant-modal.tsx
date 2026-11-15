@@ -9,7 +9,7 @@ import {
 import { AvatarStack } from "./board-extras";
 import { FileViewer } from "./file-viewer";
 import { Icon } from "./icons";
-import { Modal, Select, confirmDialog, shortcutBlocked, toast } from "./ui";
+import { Modal, Select, confirmDialog, copyText, shortcutBlocked, toast } from "./ui";
 
 // Fields the committee can edit -> database column. Only changed fields are sent, so two
 // reviewers editing different fields don't clobber each other.
@@ -209,9 +209,11 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
 
 export type PanelNav = { index: number; total: number; prev?: string; next?: string };
 
-export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], onClose, onSaved, onSendInvite, onOpenOther }: {
+export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], link, onClose, onSaved, onSendInvite, onOpenOther }: {
   a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean; nav?: PanelNav;
   origin?: DOMRect | null; viewers?: string[];
+  /** Shareable URL that opens this applicant. */
+  link?: string;
   onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void; onOpenOther: (id: string) => void;
 }) {
   const [d, setD] = useState<Applicant>(a);
@@ -258,6 +260,16 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
     const timer = setTimeout(saveNow, 700);
     return () => clearTimeout(timer);
   }, [d, saveNow]);
+
+  // Closed without going through close() (browser Back, or following a link): still save
+  // anything that was waiting on the autosave timer.
+  const flush = useRef({ saveNow, onSaved });
+  useEffect(() => { flush.current = { saveNow, onSaved }; });
+  useEffect(() => () => {
+    if (!Object.keys(changes(base.current, latest.current)).length) return;
+    const { saveNow: save, onSaved: saved } = flush.current;
+    save().then(() => saved());
+  }, []);
 
   // Closing (Done, Escape, clicking outside) saves anything still waiting first.
   const close = useCallback(async () => {
@@ -353,6 +365,11 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
       actions={
         <div className="sheet-nav">
           <AvatarStack names={viewers} size={22} label={viewers.join(", ") + (viewers.length === 1 ? " is" : " are") + " also viewing"} />
+          {link ? (
+            <button className="ui-icon-btn" type="button" aria-label="Copy link to this applicant" data-tip="Copy link" onClick={() => copyText(link, "Link copied")}>
+              <Icon name="copy" />
+            </button>
+          ) : null}
           {nav && nav.total > 1 ? (
             <>
               <span className="sheet-nav-count">{nav.index + 1} / {nav.total}</span>
