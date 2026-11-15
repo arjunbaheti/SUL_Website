@@ -16,7 +16,7 @@ import { SendModal } from "./send-modal";
 import { SettingsModal, type PurgeMode } from "./settings-modal";
 import { DEFAULT_SETTINGS, loadSettings, type PortalSettings, type SettingsMeta } from "@/lib/settings";
 import { Icon } from "./icons";
-import { Menu, Select, Ticker, toast, useTheme, type SelectOption } from "./ui";
+import { Menu, Select, Ticker, copyText, toast, useTheme, type SelectOption } from "./ui";
 import { CommandMenu, type Command } from "./command-menu";
 import { AvatarStack, BoardSkeleton, HoverPreview, useFlip, usePeek, usePresence } from "./board-extras";
 
@@ -77,6 +77,43 @@ const FILTERS: SelectOption[] = [
   { value: "second-flag", label: "Flagged for 2nd choice", group: "Other" },
   { value: "duplicates", label: "Possible duplicates", group: "Other" },
 ];
+
+// ---- Shareable URLs ----------------------------------------------------------------------------
+// The view, filters and open applicant live in the URL, e.g. /portal?a=<id>&team=Events&f=needs-my-vote
+// so a refresh keeps your place, links can be pasted into Slack, and Back/Forward work.
+const VIEWS = ["board", "insights", "health"] as const;
+type View = (typeof VIEWS)[number];
+type UrlState = { view: View; q: string; role: string; rating: string; openId: string | null };
+
+function readUrl(): UrlState {
+  const p = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+  const v = p.get("v") ?? "";
+  const f = p.get("f") ?? "";
+  return {
+    view: (VIEWS as readonly string[]).includes(v) ? (v as View) : "board",
+    q: p.get("q") ?? "",
+    role: p.get("team") ?? "",
+    rating: FILTERS.some((o) => o.value === f) ? f : "",
+    openId: p.get("a") || null,
+  };
+}
+
+function urlFor(s: UrlState) {
+  const p = new URLSearchParams(window.location.search); // keeps any params we don't own
+  const put = (k: string, val: string) => { if (val) p.set(k, val); else p.delete(k); };
+  put("a", s.openId ?? "");
+  put("v", s.view === "board" ? "" : s.view);
+  put("team", s.role);
+  put("f", s.rating);
+  put("q", s.q);
+  const qs = p.toString();
+  return window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+}
+
+/** A clean link to one applicant (without the sender's own filters), for pasting into Slack. */
+export function applicantLink(id: string) {
+  return window.location.origin + window.location.pathname + "?a=" + encodeURIComponent(id);
+}
 
 function initials(email: string) {
   const name = email.split("@")[0] || "?";
@@ -193,8 +230,9 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     readyFired.current = true;
     onReady?.();
   }, [loading, onReady]);
-  const [filters, setFilters] = useState({ q: "", role: "", rating: "" });
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [initialUrl] = useState(readUrl);
+  const [filters, setFilters] = useState({ q: initialUrl.q, role: initialUrl.role, rating: initialUrl.rating });
+  const [openId, setOpenId] = useState<string | null>(initialUrl.openId);
   const [send, setSend] = useState<{ id: string; kind: SendKind } | null>(null);
   const [dropTarget, setDropTarget] = useState<StageId | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -215,7 +253,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const [settingsMeta, setSettingsMeta] = useState<SettingsMeta>({ updatedAt: "", updatedBy: "", missingTable: false });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [me, setMe] = useState("");
-  const [view, setView] = useState<"board" | "insights" | "health">("board");
+  const [view, setView] = useState<View>(initialUrl.view);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<BulkKind | null>(null);
@@ -414,6 +452,42 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   }, [applicants, filters, me, dupesOf]);
 
   const setFilter = (k: keyof typeof filters, v: string) => setFilters((f) => ({ ...f, [k]: v }));
+
+  // Keep the URL in step with what's on screen. Opening/closing an applicant and switching view
+  // add a history entry (so Back undoes them); filters, search and stepping between applicants
+  // just update the current entry, so typing doesn't flood the history.
+  const lastUrl = useRef<{ view: View; openId: string | null } | null>(null);
+  useEffect(() => {
+    const next = urlFor({ view, ...filters, openId });
+    const prev = lastUrl.current;
+    lastUrl.current = { view, openId };
+    if (next === window.location.pathname + window.location.search + window.location.hash) return;
+    const push = !!prev && (prev.view !== view || !prev.openId !== !openId);
+    if (push) window.history.pushState(null, "", next);
+    else window.history.replaceState(null, "", next);
+  }, [view, filters, openId]);
+
+  // Back / Forward: put the screen back to what that URL describes.
+  useEffect(() => {
+    const onPop = () => {
+      const u = readUrl();
+      setView(u.view);
+      setFilters((f) => (f.q === u.q && f.role === u.role && f.rating === u.rating ? f : { q: u.q, role: u.role, rating: u.rating }));
+      setOrigin(null);
+      setOpenId(u.openId);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // A link to an applicant who isn't on the board (deleted, or a mistyped link).
+  const missingOpen = !loading && !loadError && !!openId && !applicants.some((a) => a.id === openId);
+  useEffect(() => {
+    if (!missingOpen) return;
+    toast("That applicant isn't on the board any more. They may have been deleted, or the link is incomplete.");
+    const t = setTimeout(() => setOpenId(null), 0);
+    return () => clearTimeout(t);
+  }, [missingOpen]);
 
   // Who else is here, and who's looking at which applicant.
   const { online, viewers } = usePresence(myName, openId);
@@ -721,6 +795,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       id: "m:" + st.id, group: `Move ${open.name || "applicant"}`, label: "Move to " + st.label, dot: st.color, keywords: "stage status",
       run: () => { const id = open.id; setOpenId(null); setOrigin(null); moveTo(id, st.id); },
     })) : []),
+    ...(open ? [{ id: "c:link", group: `Move ${open.name || "applicant"}`, label: "Copy link to " + (open.name || "applicant"), icon: "copy" as const, keywords: "share url slack", run: () => { copyText(applicantLink(open.id), "Link copied"); } }] : []),
     { id: "f:mine", group: "Filter", label: "Needs my vote", icon: "checkSquare", keywords: "screening queue", run: () => { setView("board"); setFilter("rating", "needs-my-vote"); } },
     ...(filtering ? [{ id: "f:clear", group: "Filter", label: "Clear filters", icon: "x" as const, run: () => setFilters({ q: "", role: "", rating: "" }) }] : []),
     { id: "a:refresh", group: "Actions", label: "Refresh", icon: "refresh", hint: <kbd>R</kbd>, run: () => { reload(); } },
@@ -922,6 +997,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           onSaved={() => refreshIds([open.id])}
           onSendInvite={(id) => setSend({ id, kind: "invite" })}
           onOpenOther={(id) => { setOrigin(null); setOpenId(id); }}
+          link={applicantLink(open.id)}
         />
       ) : null}
       {send && sending ? (
