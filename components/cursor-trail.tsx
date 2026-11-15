@@ -22,11 +22,18 @@ export function CursorTrail() {
     const ctx = c?.getContext("2d");
     if (!fine || reduced || !c || !ctx) return;
 
-    let dpr = 1;
+    // The bitmap is sized from the canvas's own box (not window.innerWidth) and pointer positions
+    // are measured against that same box, so the trail stays under the cursor at any browser or
+    // pinch zoom. No pixel-ratio cap, so it stays sharp when zoomed in.
+    let sx = 1, sy = 1;
+    let box = c.getBoundingClientRect();
     const resize = () => {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
-      c.width = Math.round(window.innerWidth * dpr);
-      c.height = Math.round(window.innerHeight * dpr);
+      box = c.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      c.width = Math.max(1, Math.round(box.width * dpr));
+      c.height = Math.max(1, Math.round(box.height * dpr));
+      sx = box.width ? c.width / box.width : dpr;
+      sy = box.height ? c.height / box.height : dpr;
     };
     resize();
 
@@ -44,7 +51,7 @@ export function CursorTrail() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, c.width, c.height);
       if (pts.length > 1) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.setTransform(sx, 0, 0, sy, 0, 0);
         // Smooth curve through the midpoints of the recorded points, tapering and fading out
         // towards the tail. Butt caps so overlapping segments don't leave "beads".
         ctx.lineCap = "butt";
@@ -75,7 +82,8 @@ export function CursorTrail() {
 
     const onMove = (e: PointerEvent) => {
       if (e.pointerType !== "mouse") return;
-      pts.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+      box = c.getBoundingClientRect();
+      pts.push({ x: e.clientX - box.left, y: e.clientY - box.top, t: performance.now() });
       if (pts.length > 64) pts.shift();
       if (!raf) raf = requestAnimationFrame(draw);
     };
@@ -90,7 +98,23 @@ export function CursorTrail() {
     window.addEventListener("pointermove", onMove, { passive: true });
     document.documentElement.addEventListener("pointerleave", onLeave);
     window.addEventListener("resize", resize);
+    // Pinch zoom moves/scales the visual viewport without a window resize.
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", resize);
+    vv?.addEventListener("scroll", resize);
+    // Browser zoom and moving between monitors change the pixel ratio.
+    let dprQuery: MediaQueryList | null = null;
+    const onDpr = () => { resize(); watchDpr(); };
+    const watchDpr = () => {
+      dprQuery?.removeEventListener("change", onDpr);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprQuery.addEventListener("change", onDpr);
+    };
+    watchDpr();
     return () => {
+      vv?.removeEventListener("resize", resize);
+      vv?.removeEventListener("scroll", resize);
+      dprQuery?.removeEventListener("change", onDpr);
       cancelAnimationFrame(raf);
       themeObserver.disconnect();
       scheme.removeEventListener("change", readColor);
