@@ -1333,6 +1333,9 @@ i.v, span.v { display: inline-block; width: 7px; height: 7px; border-radius: 50%
   background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-panel);
 }
 .ui-panel.is-sheet.is-from-origin { animation: none; }
+/* SUL wordmark loading up in the middle of the growing panel (layers styled by .splash-*). */
+.ui-ghost { display: grid; place-items: center; overflow: hidden; }
+.ui-ghost-logo { position: relative; width: min(200px, 55%); aspect-ratio: 898 / 315; }
 
 /* Avatars (presence) */
 .avatar {
