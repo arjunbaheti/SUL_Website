@@ -128,40 +128,46 @@ export function Glyph3D({ kind }: { kind: GlyphKind }) {
     const readColor = () => { ink = rgbOf(getComputedStyle(document.documentElement).getPropertyValue("--fg")); };
     readColor();
 
-    let w = 0, h = 0, dpr = 1;
-    const size = () => {
+    // Crisp at any pixel density: the bitmap matches the exact number of device pixels the canvas
+    // covers (no cap, so 3x screens and browser zoom stay sharp), and is re-sized whenever the
+    // pixel ratio changes (zooming, or dragging the window to another monitor).
+    let w = 0, h = 0, sx = 1, sy = 1;
+    const size = (devW?: number, devH?: number) => {
       const r = canvas.getBoundingClientRect();
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = window.devicePixelRatio || 1;
       w = r.width; h = r.height;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      const pw = devW ?? Math.round(w * dpr), ph = devH ?? Math.round(h * dpr);
+      if (canvas.width !== pw) canvas.width = pw;
+      if (canvas.height !== ph) canvas.height = ph;
+      sx = w ? pw / w : dpr; sy = h ? ph / h : dpr;
     };
     size();
 
     let angle = rock ? 0 : 0.5, clock = 0;
     const draw = () => {
       const model = staticModel ?? pulseModel(clock);
-      const cy = Math.cos(angle), sy = Math.sin(angle), cx = Math.cos(tilt), sx = Math.sin(tilt);
+      const cy = Math.cos(angle), sny = Math.sin(angle), cx = Math.cos(tilt), snx = Math.sin(tilt);
       const F = 4; // camera distance in model radii (gentle perspective)
       const R = (Math.min(w, h) / 2 - 1.5) / (F / (F - 1));
       const project = (p: V3) => {
-        const x1 = p.x * cy + p.z * sy;
-        const z1 = -p.x * sy + p.z * cy;
-        const y2 = p.y * cx - z1 * sx;
-        const z2 = p.y * sx + z1 * cx;
+        const x1 = p.x * cy + p.z * sny;
+        const z1 = -p.x * sny + p.z * cy;
+        const y2 = p.y * cx - z1 * snx;
+        const z2 = p.y * snx + z1 * cx;
         const s = F / (F - z2);
         return { x: w / 2 + x1 * R * s, y: h / 2 - y2 * R * s, d: (z2 + 1) / 2 }; // screen y runs down
       };
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(sx, 0, 0, sy, 0, 0);
       ctx.clearRect(0, 0, w, h);
       // Strokes and dots scale with the mark so it stays crisp at any size (tuned at 56px).
       const k = Math.max(0.6, Math.min(w, h) / 56);
-      ctx.lineWidth = (kind === "pulse" ? 1.4 : kind === "bars" ? 0.9 : 0.75) * k;
+      // Never thinner than one device pixel: sub-pixel hairlines get smeared by anti-aliasing.
+      ctx.lineWidth = Math.max(1 / sx, (kind === "pulse" ? 1.5 : kind === "bars" ? 1.1 : 1) * k);
       ctx.lineCap = "round";
       for (const [a, b] of model.lines) {
         const A = project(a), B = project(b);
-        ctx.strokeStyle = `rgba(${ink}, ${0.1 + ((A.d + B.d) / 2) * 0.4})`;
+        ctx.strokeStyle = `rgba(${ink}, ${0.22 + ((A.d + B.d) / 2) * 0.5})`;
         ctx.beginPath();
         ctx.moveTo(A.x, A.y);
         ctx.lineTo(B.x, B.y);
@@ -169,7 +175,7 @@ export function Glyph3D({ kind }: { kind: GlyphKind }) {
       }
       for (const p of model.dots) {
         const P = project(p);
-        ctx.fillStyle = `rgba(${ink}, ${0.25 + P.d * 0.75})`;
+        ctx.fillStyle = `rgba(${ink}, ${0.4 + P.d * 0.6})`;
         ctx.beginPath();
         ctx.arc(P.x, P.y, (1.1 + P.d * 1.0) * k, 0, Math.PI * 2);
         ctx.fill();
@@ -202,13 +208,27 @@ export function Glyph3D({ kind }: { kind: GlyphKind }) {
     theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
     scheme.addEventListener("change", recolor);
-    const ro = new ResizeObserver(() => { size(); if (reduced) draw(); });
-    ro.observe(canvas);
+    const ro = new ResizeObserver(([entry]) => {
+      const dev = entry?.devicePixelContentBoxSize?.[0];
+      size(dev?.inlineSize, dev?.blockSize);
+      draw();
+    });
+    try { ro.observe(canvas, { box: "device-pixel-content-box" }); } catch { ro.observe(canvas); }
+    // Pixel ratio changes don't resize the canvas in CSS pixels, so watch for them directly.
+    let dprQuery: MediaQueryList | null = null;
+    const onDpr = () => { size(); draw(); watchDpr(); };
+    const watchDpr = () => {
+      dprQuery?.removeEventListener("change", onDpr);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      dprQuery.addEventListener("change", onDpr);
+    };
+    watchDpr();
 
     return () => {
       cancelAnimationFrame(raf);
       io.disconnect();
       ro.disconnect();
+      dprQuery?.removeEventListener("change", onDpr);
       theme.disconnect();
       scheme.removeEventListener("change", recolor);
       document.removeEventListener("visibilitychange", onVis);
