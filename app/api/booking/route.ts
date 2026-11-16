@@ -22,6 +22,8 @@ const MESSAGES: Record<string, [number, string]> = {
   slot_taken: [409, "Someone just booked that time. Please pick another."],
   too_late: [409, "That time is too soon to book. Please pick a later one."],
   locked: [409, "Your interview is too soon to change online. Please reply to your invite email and we'll sort it out."],
+  already_booked: [409, "You already have an interview booked from another application. Use the link in that email to change it, or reply to us."],
+  too_many: [429, "You've changed your booking several times today. Please reply to your invite email and we'll sort it out."],
   not_committee: [403, "This account isn't on the committee reviewer list."],
 };
 

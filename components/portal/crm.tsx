@@ -10,7 +10,7 @@ import {
 import { ApplicantModal, type PanelNav } from "./applicant-modal";
 import { Insights } from "./insights";
 import { Health } from "./health";
-import { Interviews, MIGRATION, type Member } from "./interviews";
+import { Interviews, MIGRATION, releaseInterviews, type Member } from "./interviews";
 import { fmtSlotShort, slotFromRow, type Slot } from "@/lib/booking";
 import { Glyph3D } from "./glyph-3d";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
@@ -562,6 +562,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   async function moveTo(id: string, status: StageId, opts: { undoable?: boolean } = { undoable: true }) {
     const a = applicants.find((x) => x.id === id);
     if (!a || a.status === status) return;
+    if (!(await releaseInterviews([a], status, slots))) return;
     const prev = a.status;
     const set = (s: StageId) => setApplicants((l) => l.map((x) => (x.id === id ? { ...x, status: s, updatedAt: new Date().toISOString() } : x)));
     set(status); // optimistic: show it now, roll back if the database refuses
@@ -587,7 +588,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
 
   async function onSent(a: Applicant, kind: SendKind) {
     await addNote(a.id, SEND_META[kind].logged, "auto");
-    if (kind === "invite" && a.status === "review" && settings.autoInvitedAfterSend) {
+    if (kind === "invite" && (a.status === "review" || a.status === "applied") && settings.autoInvitedAfterSend) {
       await portalClient().from("applications").update({ status: "invited" }).eq("id", a.id);
       await addNote(a.id, "Moved to " + STAGE_BY_ID.invited.label, "auto");
     }
@@ -605,6 +606,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       ? [...from.entries()]
       : selectedApplicants.filter((a) => a.status !== status).map((a) => [a.id, status as StageId] as [string, StageId]);
     if (!targets.length) return;
+    if (!from && status && !(await releaseInterviews(selectedApplicants.filter((a) => a.status !== status), status, slots))) return;
     const previous = new Map(targets.map(([id]) => [id, applicants.find((x) => x.id === id)?.status ?? "applied"] as [string, StageId]));
     const db = portalClient();
     // Optimistic: move the cards now; the database catches up below.

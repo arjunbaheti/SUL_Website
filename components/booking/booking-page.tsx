@@ -40,6 +40,7 @@ export function BookingPage({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null);
   const [justBooked, setJustBooked] = useState(false);
+  const [openedAt] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     const { data, error } = await applyClient().rpc("booking_info", { p_token: token });
@@ -119,9 +120,23 @@ export function BookingPage({ token }: { token: string }) {
   }
 
   const cur = info.current;
-  const showPicker = info.open && (!cur || picking);
   const hours = Math.round(info.cutoff_hours);
 
+  // Their interview has already happened: nothing to book or change.
+  if (cur && +new Date(cur.ends_at) < openedAt) {
+    return (
+      <div className="book-card">
+        <p className="book-eyebrow">StartUp Link UniMelb · {info.role || "Committee"} interview</p>
+        <h1 className="book-title">Thanks for interviewing, {info.first_name}</h1>
+        <p className="book-lead">
+          Your interview was on {fmtDayLong(cur.starts_at)} at {fmtTime(cur.starts_at)}. We&apos;ll be in touch by email
+          about next steps.
+        </p>
+      </div>
+    );
+  }
+
+  const showPicker = info.open && (!cur || picking);
   return (
     <div className="book-card">
       <p className="book-eyebrow">StartUp Link UniMelb · {info.role || "Committee"} interview</p>
@@ -149,7 +164,9 @@ export function BookingPage({ token }: { token: string }) {
               </>
             ) : null}
           </div>
-          {!cur.can_change ? (
+          {!info.open ? (
+            <p className="book-note">To change this time, reply to your invite email.</p>
+          ) : !cur.can_change ? (
             <p className="book-note">Your interview is less than {hours} hours away, so it can&apos;t be changed online. If something comes up, reply to your invite email.</p>
           ) : null}
         </div>

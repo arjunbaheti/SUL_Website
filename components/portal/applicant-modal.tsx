@@ -8,7 +8,7 @@ import {
 } from "@/lib/portal";
 import { AvatarStack } from "./board-extras";
 import { FileViewer } from "./file-viewer";
-import { InterviewSection, type Member } from "./interviews";
+import { InterviewSection, releaseInterviews, setInterview, type Member } from "./interviews";
 import type { Slot } from "@/lib/booking";
 import { Icon } from "./icons";
 import { Modal, Select, confirmDialog, copyText, shortcutBlocked, toast } from "./ui";
@@ -359,6 +359,10 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
       confirmLabel: "Delete applicant",
       danger: true,
     }))) return;
+    // Cancel an upcoming interview first, so the interviewers' calendar event is removed.
+    if (a.interviewSlotId && a.interviewAt && +new Date(a.interviewAt) > Date.now()) {
+      if (!(await setInterview(a.id, null, false, true))) return;
+    }
     const db = portalClient();
     // Delete the row first (notes go with it via ON DELETE CASCADE), then the files.
     const { data, error } = await db.from("applications").delete().eq("id", a.id).select("id");
@@ -456,7 +460,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
           block
           label="Stage"
           value={d.status}
-          onChange={(v) => up("status", v as StageId)}
+          onChange={async (v) => { if (await releaseInterviews([a], v as StageId, slots)) up("status", v as StageId); }}
           options={STAGES.map((s) => ({ value: s.id, label: s.label, dot: s.color }))}
         />
       </div>

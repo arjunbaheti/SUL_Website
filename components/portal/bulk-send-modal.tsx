@@ -40,6 +40,7 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
     const sentAt = sentEmails(a)[sentGroup(kind)];
     let skip = "";
     if (!a.email) skip = "No email address";
+    else if (kind === "invite" && a.interviewSlotId) skip = "Already booked an interview";
     else if (kind === "invite" && !inviteLink(a)) skip = "No booking link (run the booking database update)";
     else if (sentAt && !resend) skip = "Already sent " + ago(sentAt);
     return { a, kind, skip, sentAt };

@@ -6,7 +6,7 @@ import { TEAMS } from "@/lib/content";
 import {
   dayKey, fmtDayLong, fmtSlotShort, fmtTime, melbourneToUtc, melbourneToday, type Slot,
 } from "@/lib/booking";
-import { STAGE_BY_ID, ago, inviteLink, sentEmails, type Applicant } from "@/lib/portal";
+import { STAGE_BY_ID, ago, inviteLink, sentEmails, type Applicant, type StageId } from "@/lib/portal";
 import { Glyph3D } from "./glyph-3d";
 import { Icon } from "./icons";
 import { Menu, Modal, Select, Ticker, confirmDialog, copyText, toast } from "./ui";
@@ -21,8 +21,9 @@ export const MIGRATION = "supabase/migrations/2026-11-16-interview-booking.sql";
 const memberName = (members: Member[], email: string) => members.find((m) => m.email === email)?.firstName || email.split("@")[0];
 const slotRange = (s: Slot) => `${fmtTime(s.startsAt)} – ${fmtTime(s.endsAt)}`;
 
-/** Books, moves (slotId) or cancels (null) an interview for an applicant, emailing everyone. */
-export async function setInterview(applicationId: string, slotId: string | null, notify = true): Promise<boolean> {
+/** Books, moves (slotId) or cancels (null) an interview for an applicant, emailing everyone.
+ *  notify=false leaves the candidate out (interviewers are always told). */
+export async function setInterview(applicationId: string, slotId: string | null, notify = true, quiet = false): Promise<boolean> {
   try {
     const { data } = await portalClient().auth.getSession();
     const res = await fetch("/api/booking", {
@@ -33,12 +34,41 @@ export async function setInterview(applicationId: string, slotId: string | null,
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; changed?: boolean; emailed?: boolean; emailError?: string };
     if (!res.ok || !body.ok) { toast("Couldn't update the interview: " + (body.error || "HTTP " + res.status)); return false; }
     if (body.changed && body.emailed === false) toast("Saved, but the emails didn't send: " + (body.emailError || "unknown error"));
-    else if (body.changed) toast(slotId ? "Interview booked and invites sent" : "Interview cancelled and everyone emailed");
+    else if (body.changed && !quiet) toast(slotId ? "Interview booked and invites sent" : "Interview cancelled and everyone emailed");
     return true;
   } catch (err) {
     toast("Check your connection. (" + (err as Error)?.message + ")");
     return false;
   }
+}
+
+/** Stages that mean "no interview (yet)": moving a booked applicant here gives up their slot. */
+const RELEASE_STAGES: StageId[] = ["applied", "review", "invited", "rejected"];
+
+/** Before moving applicants to `to`: if any have an upcoming interview, asks, then cancels it
+ *  (interviewers get a calendar cancellation; the candidate isn't emailed, since a rejection or
+ *  re-invite usually follows). Returns false if the move should stop. */
+export async function releaseInterviews(apps: Applicant[], to: StageId, slots: Slot[]): Promise<boolean> {
+  if (!RELEASE_STAGES.includes(to)) return true;
+  const now = Date.now();
+  const ahead = apps.filter((a) => {
+    if (!a.interviewSlotId || a.status === to) return false;
+    const start = slots.find((s) => s.id === a.interviewSlotId)?.startsAt || a.interviewAt;
+    return !start || +new Date(start) > now;
+  });
+  if (!ahead.length) return true;
+  const one = ahead[0];
+  const ok = await confirmDialog({
+    title: ahead.length === 1
+      ? `${one.name || "This applicant"} has an interview ${one.interviewAt ? "on " + fmtSlotShort(one.interviewAt) : "booked"}`
+      : `${ahead.length} of them have interviews booked`,
+    body: `Moving to ${STAGE_BY_ID[to].label} cancels ${ahead.length === 1 ? "it" : "them"} and frees the slot. Interviewers get a calendar cancellation. The candidate isn't emailed, so send them your own message if needed.`,
+    confirmLabel: "Move and cancel interview",
+    danger: to === "rejected",
+  });
+  if (!ok) return false;
+  for (const a of ahead) if (!(await setInterview(a.id, null, false, true))) return false;
+  return true;
 }
 
 /** Slots nobody has booked yet, from now on. */
@@ -153,8 +183,8 @@ export function InterviewSection({ a, slots, applicants, members, onChanged, onS
 const LENGTHS = [15, 20, 30, 45, 60];
 const GAPS = [0, 5, 10, 15];
 
-function AddSlotsModal({ members, me, onClose, onSaved }: {
-  members: Member[]; me: string; onClose: () => void; onSaved: () => Promise<void>;
+function AddSlotsModal({ members, me, existing, onClose, onSaved }: {
+  members: Member[]; me: string; existing: Slot[]; onClose: () => void; onSaved: () => Promise<void>;
 }) {
   const [date, setDate] = useState(melbourneToday);
   const [from, setFrom] = useState("10:00");
@@ -178,11 +208,20 @@ function AddSlotsModal({ members, me, onClose, onSaved }: {
     return out;
   }, [date, from, to, len, gap]);
   const past = planned.length > 0 && +new Date(planned[0].starts_at) < openedAt;
+  // Same start time and place as a slot that already exists: skipped, so adding twice is harmless.
+  const loc = location.trim().toLowerCase();
+  const isDup = (p: { starts_at: string }) => existing.some((e) => +new Date(e.startsAt) === +new Date(p.starts_at) && e.location.trim().toLowerCase() === loc);
+  const fresh = planned.filter((p) => !isDup(p));
+  const dupes = planned.length - fresh.length;
+  // An interviewer already down for an overlapping slot elsewhere.
+  const clashes = fresh.filter((p) => existing.some((e) =>
+    +new Date(e.startsAt) < +new Date(p.ends_at) && +new Date(e.endsAt) > +new Date(p.starts_at)
+    && e.interviewers.some((x) => people.includes(x)))).length;
 
   async function save() {
-    if (!planned.length || past) return;
+    if (!fresh.length || past) return;
     setBusy(true);
-    const rows = planned.map((p) => ({ ...p, location: location.trim(), team, interviewers: people }));
+    const rows = fresh.map((p) => ({ ...p, location: location.trim(), team, interviewers: people }));
     const { error } = await portalClient().from("interview_slots").insert(rows);
     setBusy(false);
     if (error) { toast("Couldn't add slots: " + error.message); return; }
@@ -200,14 +239,15 @@ function AddSlotsModal({ members, me, onClose, onSaved }: {
       foot={
         <>
           <span className="crm-help" style={{ margin: 0 }}>
-            {past ? "That time has already passed." : planned.length
-              ? `${planned.length} slot${planned.length === 1 ? "" : "s"}: ${fmtTime(planned[0].starts_at)} – ${fmtTime(planned[planned.length - 1].ends_at)}`
-              : "No slots fit in that window."}
+            {past ? "That time has already passed." : !planned.length ? "No slots fit in that window."
+              : !fresh.length ? "These slots already exist."
+              : `${fresh.length} slot${fresh.length === 1 ? "" : "s"}: ${fmtTime(fresh[0].starts_at)} – ${fmtTime(fresh[fresh.length - 1].ends_at)}`
+                + (dupes ? ` · ${dupes} already exist${dupes === 1 ? "s" : ""}, skipped` : "")}
           </span>
           <span className="spacer" />
           <button className="ui-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="ui-btn ui-btn-primary" type="button" disabled={busy || !planned.length || past} onClick={save}>
-            {busy ? "Adding…" : `Add ${planned.length || ""} slot${planned.length === 1 ? "" : "s"}`}
+          <button className="ui-btn ui-btn-primary" type="button" disabled={busy || !fresh.length || past} onClick={save}>
+            {busy ? "Adding…" : `Add ${fresh.length || ""} slot${fresh.length === 1 ? "" : "s"}`}
           </button>
         </>
       }
@@ -253,6 +293,10 @@ function AddSlotsModal({ members, me, onClose, onSaved }: {
           </div>
         ) : <p className="crm-help" style={{ margin: 0 }}>No committee members found.</p>}
       </div>
+      {clashes ? (
+        <p className="crm-settings-warn" role="alert"><Icon name="alert" size={14} />{clashes} of these overlap{clashes === 1 ? "s" : ""} a slot one of these interviewers already has.</p>
+      ) : null}
+      {!people.length ? <p className="crm-help" style={{ margin: 0 }}>No interviewers ticked, so nobody gets a calendar invite for these bookings.</p> : null}
     </Modal>
   );
 }
@@ -431,7 +475,7 @@ export function Interviews({ applicants, slots, members, me, missing, onOpen, on
         )}
       </section>
 
-      {adding ? <AddSlotsModal members={members} me={me} onClose={() => setAdding(false)} onSaved={onReload} /> : null}
+      {adding ? <AddSlotsModal members={members} me={me} existing={slots} onClose={() => setAdding(false)} onSaved={onReload} /> : null}
     </div>
   );
 }
