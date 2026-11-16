@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { portalClient } from "@/lib/supabase";
-import { SEND_META, ago, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
+import { SEND_META, ago, inviteLink, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
 import { fillTemplate, type PortalSettings } from "@/lib/settings";
 import { Icon } from "./icons";
 import { Modal, confirmDialog, copyText, toast } from "./ui";
@@ -26,7 +26,8 @@ export async function sendEmail(to: string, subject: string, text: string, setti
 
 export function draftFor(a: Applicant, kind: SendKind, settings: PortalSettings) {
   const tpl = settings.templates[kind];
-  return { subject: fillTemplate(tpl.subject, a, a.booking), body: fillTemplate(tpl.body, a, a.booking) };
+  const link = inviteLink(a);
+  return { subject: fillTemplate(tpl.subject, a, link), body: fillTemplate(tpl.body, a, link) };
 }
 
 export function SendModal({ a, kind: initialKind, settings, onClose, onSent }: {

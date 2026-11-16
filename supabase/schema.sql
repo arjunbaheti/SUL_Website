@@ -10,6 +10,7 @@
 --   booking_slots       shared zcal interview slots (was per-browser localStorage)
 --   storage bucket      "resumes" (PRIVATE): resume + extra attachments
 --   form_events         anonymous application-form progress (no answers), for the Health tab
+--   interview_slots     built-in interview booking: see migrations/2026-11-16-interview-booking.sql
 --
 -- Security model
 --   * The public site uses the "anon" key. Anon can ONLY insert an application (with a locked-down

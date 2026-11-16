@@ -30,6 +30,8 @@ const PATHS = {
   pulse: <path d="M1.75 8.25h2.5l1.75-4 3 8 1.75-4h3.5" />,
   chart: <><path d="M2.75 2.75v10.5h10.5" /><path d="M5.5 10.5V8M8.5 10.5V5.5M11.5 10.5v-3.5" /></>,
   checkSquare: <><rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2" /><path d="m5.25 8.25 2 2 3.75-4" /></>,
+  calendar: <><rect x="2.25" y="3.25" width="11.5" height="10.5" rx="1.75" /><path d="M2.25 6.75h11.5M5.5 1.75v3M10.5 1.75v3" /></>,
+  plus: <path d="M8 3.25v9.5M3.25 8h9.5" />,
   trash: <><path d="M2.75 4.25h10.5M6.25 4.25V2.75h3.5v1.5" /><path d="M4 4.25l.6 8.6a1.5 1.5 0 0 0 1.5 1.4h3.8a1.5 1.5 0 0 0 1.5-1.4l.6-8.6" /></>,
 } as const;
 

@@ -8,9 +8,10 @@ import { portalClient } from "./supabase";
 import type { Applicant, SendKind } from "./portal";
 
 export type EmailTemplate = { subject: string; body: string };
-/** Every editable email: the four the committee sends, plus the automatic "application received". */
-export type EmailKey = SendKind | "received";
-export const EMAIL_KEYS: EmailKey[] = ["received", "invite", "offer", "reject", "rejectScreen"];
+/** Every editable email: the four the committee sends, plus the automatic "application received"
+ *  and "interview booked" confirmations. */
+export type EmailKey = SendKind | "received" | "booked";
+export const EMAIL_KEYS: EmailKey[] = ["received", "invite", "booked", "offer", "reject", "rejectScreen"];
 
 export type PortalSettings = {
   senderName: string;
@@ -19,13 +20,16 @@ export type PortalSettings = {
   confirmationEnabled: boolean; // email applicants automatically when they submit the form
   autoInvitedAfterSend: boolean; // sending an invite moves "Under review" -> "Interview invited"
   ratingMovesStage: boolean; // interview rating Yes -> Offer, Maybe -> Waitlist, No -> Rejected
+  bookingCutoffHours: number; // candidates can't book or change an interview closer than this (read by the database too)
 };
 
 export const PLACEHOLDERS: { key: string; help: string }[] = [
   { key: "{first_name}", help: "Applicant's first name" },
   { key: "{full_name}", help: "Applicant's full name" },
   { key: "{role}", help: "Team they applied for" },
-  { key: "{link}", help: "Their zcal booking link (interview invites only)" },
+  { key: "{link}", help: "Their personal interview booking link" },
+  { key: "{when}", help: "Interview day and time (Interview booked email only)" },
+  { key: "{location}", help: "Interview location (Interview booked email only)" },
 ];
 
 export const DEFAULT_SETTINGS: PortalSettings = {
@@ -34,6 +38,7 @@ export const DEFAULT_SETTINGS: PortalSettings = {
   autoInvitedAfterSend: true,
   ratingMovesStage: true,
   confirmationEnabled: true,
+  bookingCutoffHours: 12,
   templates: {
     received: {
       subject: "We've received your application — StartUp Link UniMelb",
@@ -47,10 +52,14 @@ export const DEFAULT_SETTINGS: PortalSettings = {
         "Interviews will be in person and scheduled as a 30-minute slot, with the conversation itself lasting approximately 20 minutes. The dress code is casual, so just come as you are.",
         "This is a great chance for you to learn more about StartUp Link, for us to get to know you better, and for you to ask any questions about the club, roles, or what the year ahead looks like. Please book a time that suits you using the link below:",
         "{link}",
-        "If you're unable to attend one of the current slots, please reply to this email to arrange an alternative time.",
+        "You can use the same link to change or cancel your time later. If none of the times work for you, please reply to this email to arrange an alternative.",
         "If you have any questions or run into any issues or are unable to make any of the above times for a valid reason, feel free to reply to this email and we'll be happy to help. We're really looking forward to meeting you soon and learning more about you.",
         "Best,\nPeople & Culture Team",
       ].join("\n\n"),
+    },
+    booked: {
+      subject: "Interview confirmed — StartUp Link UniMelb",
+      body: "Hi {first_name},\n\nThanks for booking your interview for the {role} team. Here are the details:\n\nWhen: {when}\nWhere: {location}\n\nWe've attached a calendar invite so it's easy to add to your calendar.\n\nNeed to change or cancel? Use your booking link: {link}\n\nSee you soon!\n\nPeople & Culture Team\nStartUp Link UniMelb",
     },
     offer: {
       subject: "Offer — StartUp Link UniMelb Committee",
@@ -84,7 +93,9 @@ export function mergeSettings(saved: unknown): PortalSettings {
     autoInvitedAfterSend: bool(s.autoInvitedAfterSend, d.autoInvitedAfterSend),
     ratingMovesStage: bool(s.ratingMovesStage, d.ratingMovesStage),
     confirmationEnabled: bool(s.confirmationEnabled, d.confirmationEnabled),
-    templates: { received: tpl("received"), invite: tpl("invite"), offer: tpl("offer"), reject: tpl("reject"), rejectScreen: tpl("rejectScreen") },
+    bookingCutoffHours: typeof s.bookingCutoffHours === "number" && isFinite(s.bookingCutoffHours)
+      ? Math.max(0, Math.min(168, Math.round(s.bookingCutoffHours))) : d.bookingCutoffHours,
+    templates: { received: tpl("received"), invite: tpl("invite"), booked: tpl("booked"), offer: tpl("offer"), reject: tpl("reject"), rejectScreen: tpl("rejectScreen") },
   };
 }
 
@@ -109,13 +120,15 @@ export async function saveSettings(settings: PortalSettings): Promise<string | n
 }
 
 /** Fills {placeholders} in a template for one applicant. */
-export function fillTemplate(text: string, a: Pick<Applicant, "name" | "role">, link = "") {
+export function fillTemplate(text: string, a: Pick<Applicant, "name" | "role">, link = "", extra: { when?: string; location?: string } = {}) {
   const first = (a.name || "").trim().split(/\s+/)[0] || "there";
   const values: Record<string, string> = {
     first_name: first,
     full_name: (a.name || "").trim() || first,
     role: (a.role || "").trim() || "StartUp Link",
     link: link.trim(),
+    when: extra.when || "",
+    location: extra.location || "To be confirmed",
   };
-  return text.replace(/\{(first_name|full_name|role|link)\}/g, (_, k: string) => values[k]);
+  return text.replace(/\{(first_name|full_name|role|link|when|location)\}/g, (_, k: string) => values[k]);
 }

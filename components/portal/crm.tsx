@@ -4,12 +4,14 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import {
   RATINGS, SEND_META, STAGES, STAGE_BY_ID, ago, applicantFromRow, csvCell,
-  download, fmtDate, fmtDateTime, hasResume, rejectionKind, sentEmails, stamp, voteTally,
+  download, fmtDate, fmtDateTime, hasResume, inviteLink, rejectionKind, sentEmails, stamp, voteTally,
   type Applicant, type SendKind, type StageId,
 } from "@/lib/portal";
 import { ApplicantModal, type PanelNav } from "./applicant-modal";
 import { Insights } from "./insights";
 import { Health } from "./health";
+import { Interviews, MIGRATION, type Member } from "./interviews";
+import { fmtSlotShort, slotFromRow, type Slot } from "@/lib/booking";
 import { Glyph3D } from "./glyph-3d";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
 import { SendModal } from "./send-modal";
@@ -25,7 +27,7 @@ import { AvatarStack, BoardSkeleton, HoverPreview, useFlip, usePeek, usePresence
 
 const CSV_COLS = [
   "name", "email", "phone", "degree", "yearLevel", "role", "roleSecondary", "status", "rating", "linkedin",
-  "statement", "experience", "questions", "extraNote", "booking", "secondChoiceFlag", "createdAt",
+  "statement", "experience", "questions", "extraNote", "interviewAt", "secondChoiceFlag", "createdAt",
 ] as const;
 const SELECT_FULL = "*, application_notes(*), application_votes(*)";
 const SELECT_NO_VOTES = "*, application_notes(*)";
@@ -81,7 +83,7 @@ const FILTERS: SelectOption[] = [
 // ---- Shareable URLs ----------------------------------------------------------------------------
 // The view, filters and open applicant live in the URL, e.g. /portal?a=<id>&team=Events&f=needs-my-vote
 // so a refresh keeps your place, links can be pasted into Slack, and Back/Forward work.
-const VIEWS = ["board", "insights", "health"] as const;
+const VIEWS = ["board", "interviews", "insights", "health"] as const;
 type View = (typeof VIEWS)[number];
 type UrlState = { view: View; q: string; role: string; rating: string; openId: string | null };
 
@@ -178,6 +180,9 @@ const BoardCard = memo(function BoardCard({ a, selectMode, isSel, isDragging, vi
             {t.maybe ? <><i className="v maybe" />{t.maybe}</> : null}
             {t.no ? <><i className="v no" />{t.no}</> : null}
           </span>
+        ) : null}
+        {a.interviewSlotId && a.interviewAt ? (
+          <span className="crm-badge iv" title={"Interview " + fmtSlotShort(a.interviewAt) + " (Melbourne time)"}><Icon name="calendar" size={12} />{fmtSlotShort(a.interviewAt)}</span>
         ) : null}
         {sent.invite ? <span className="crm-badge sent" title={"Invite emailed " + fmtDateTime(sent.invite)}><Icon name="mail" size={12} />Invite · {ago(sent.invite)}</span> : null}
         {sent.offer ? <span className="crm-badge sent" title={"Offer emailed " + fmtDateTime(sent.offer)}><Icon name="mail" size={12} />Offer · {ago(sent.offer)}</span> : null}
@@ -315,6 +320,24 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     return () => { alive = false; };
   }, []);
 
+  // Interview slots (Interviews tab, profile) and the committee list (interviewer picker).
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [slotsMissing, setSlotsMissing] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const loadSlots = useCallback(async () => {
+    const { data, error } = await portalClient().from("interview_slots").select("*").order("starts_at");
+    if (error) { setSlotsMissing(/interview_slots|does not exist|schema cache/i.test(error.message)); return; }
+    setSlotsMissing(false);
+    setSlots((data ?? []).map(slotFromRow));
+  }, []);
+  useEffect(() => {
+    const t = setTimeout(loadSlots, 0);
+    portalClient().from("committee_members").select("email, first_name").order("email").then(({ data }) => {
+      if (data) setMembers(data.map((m) => ({ email: String(m.email).toLowerCase(), firstName: typeof m.first_name === "string" ? m.first_name.trim() : "" })));
+    });
+    return () => clearTimeout(t);
+  }, [loadSlots]);
+
   const refreshSettings = useCallback(async () => {
     const r = await loadSettings();
     setSettings(r.settings);
@@ -372,6 +395,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       return [...added, ...next].sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""));
     });
   }, []);
+  const reloadInterviews = useCallback(async () => { await Promise.all([loadSlots(), load()]); }, [loadSlots, load]);
 
   // Initial load + live updates. Each change only re-fetches the applicant it touched, not the
   // whole board, which keeps Supabase bandwidth low with hundreds of applicants and several
@@ -402,6 +426,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       .on("postgres_changes", { event: "*", schema: "public", table: "application_votes" }, (p) => {
         queue(((p.new as Row)?.application_id) || ((p.old as Row)?.application_id));
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_slots" }, () => { loadSlots(); })
       // A teammate saving settings updates everyone's board.
       .on("postgres_changes", { event: "*", schema: "public", table: "portal_settings" }, () => { refreshSettings(); })
       // The first connect is covered by the load below; later ones are reconnects after a drop.
@@ -417,7 +442,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     const first = setTimeout(load, 0);
     const settingsTimer = setTimeout(refreshSettings, 0);
     return () => { clearTimeout(timer); clearTimeout(first); clearTimeout(settingsTimer); db.removeChannel(channel); };
-  }, [load, refreshIds, refreshSettings]);
+  }, [load, refreshIds, refreshSettings, loadSlots]);
 
   const roles = useMemo(
     () => [...new Set(applicants.flatMap((a) => [a.role, a.roleSecondary]).filter(Boolean))].sort(),
@@ -556,7 +581,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
 
   function openSend(a: Applicant, kind: SendKind) {
     if (!a.email) { toast("This applicant doesn't have an email address on file."); return; }
-    if (kind === "invite" && !a.booking.trim()) { toast("Paste their zcal link on their profile first, then save."); setOpenId(a.id); return; }
+    if (kind === "invite" && !inviteLink(a)) { toast("Interview booking needs the latest database update: run " + MIGRATION + "."); return; }
     setSend({ id: a.id, kind });
   }
 
@@ -697,6 +722,9 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           <button type="button" aria-label="Board" aria-current={view === "board" ? "page" : undefined} onClick={() => setView("board")}>
             <Icon name="board" /><span className="tab-label">Board</span>
           </button>
+          <button type="button" aria-label="Interviews" aria-current={view === "interviews" ? "page" : undefined} onClick={() => { exitSelect(); setView("interviews"); }}>
+            <Icon name="calendar" /><span className="tab-label">Interviews</span>
+          </button>
           <button type="button" aria-label="Insights" aria-current={view === "insights" ? "page" : undefined} onClick={() => { exitSelect(); setView("insights"); }}>
             <Icon name="chart" /><span className="tab-label">Insights</span>
           </button>
@@ -789,6 +817,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
 
   const commands: Command[] = [
     { id: "v:board", group: "Go to", label: "Board", icon: "board", keywords: "pipeline kanban", run: () => setView("board") },
+    { id: "v:interviews", group: "Go to", label: "Interviews", icon: "calendar", keywords: "booking slots schedule calendar zcal", run: () => { exitSelect(); setView("interviews"); } },
     { id: "v:insights", group: "Go to", label: "Insights", icon: "chart", keywords: "stats analytics", run: () => { exitSelect(); setView("insights"); } },
     { id: "v:health", group: "Go to", label: "Application health", icon: "pulse", keywords: "form funnel drop off", run: () => { exitSelect(); setView("health"); } },
     ...(open ? STAGES.filter((st) => st.id !== open.status).map((st): Command => ({
@@ -819,6 +848,13 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       <div className="app-body">
         {view === "insights" ? <Insights applicants={applicants} /> : null}
         {view === "health" ? <Health /> : null}
+        {view === "interviews" ? (
+          <Interviews
+            applicants={applicants} slots={slots} members={members} me={me} missing={slotsMissing}
+            onOpen={(id) => { setOrigin(null); setOpenId(id); }}
+            onReload={reloadInterviews}
+          />
+        ) : null}
         <div className="board-view" hidden={view !== "board"}>
           <div className="page-head">
             <div>
@@ -996,6 +1032,10 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           onClose={() => { setOpenId(null); setOrigin(null); }}
           onSaved={() => refreshIds([open.id])}
           onSendInvite={(id) => setSend({ id, kind: "invite" })}
+          slots={slots}
+          applicants={applicants}
+          members={members}
+          onInterviewChanged={async () => { await Promise.all([loadSlots(), refreshIds([open.id])]); }}
           onOpenOther={(id) => { setOrigin(null); setOpenId(id); }}
           link={applicantLink(open.id)}
         />

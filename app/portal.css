@@ -1498,3 +1498,40 @@ html[data-app="portal"] .cmd-search input:focus-visible { box-shadow: none; }
 /* Tooltips on right-hand controls open leftwards so they never overhang the window. */
 .app-bar-end [data-tip]::after, .toolbar .spacer ~ [data-tip]::after { left: auto; right: 0; transform: translate(0, -2px); }
 .app-bar-end [data-tip]:hover::after, .toolbar .spacer ~ [data-tip]:hover::after { transform: translate(0, 0); }
+
+/* ---------- Interviews (built-in booking) ---------- */
+.iv-booked {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md, 10px); background: var(--surface-2);
+}
+.iv-booked > .ui-icon { color: var(--accent); flex: none; }
+.iv-booked-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.iv-booked-text strong { font-size: 14px; font-weight: 550; }
+.iv-booked-text span { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.iv-booked-actions { display: flex; align-items: center; gap: 6px; }
+.iv-or { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.iv-label-note { margin-left: 6px; font-weight: 400; color: var(--subtle); }
+.iv-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 2px 12px; max-height: 220px; overflow: auto; padding: 2px; }
+.iv-person { margin: 0; padding: 5px 0; }
+.iv-person span { display: flex; flex-direction: column; min-width: 0; }
+.iv-person small { font-size: 11.5px; color: var(--subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iv-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 8px; }
+.iv-day { margin-top: 16px; }
+.iv-day + .iv-day { margin-top: 22px; }
+.iv-day-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.iv-day-head h4 { margin: 0; font-size: 13.5px; font-weight: 550; }
+.iv-day-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.iv-table td { vertical-align: middle; }
+.iv-table tr.is-past td { opacity: 0.55; }
+.iv-time { white-space: nowrap; font-weight: 500; }
+.iv-cand { display: inline-flex; align-items: center; gap: 7px; text-align: left; }
+.iv-cand small { color: var(--muted); font-size: 12px; text-decoration: none; }
+.iv-open { color: var(--subtle); }
+.iv-loc, .iv-who { color: var(--fg-2); font-size: 12.5px; overflow-wrap: anywhere; }
+.iv-act { width: 1%; text-align: right; white-space: nowrap; }
+.ins-tile-sub.iv-warn { color: var(--red); }
+.crm-badge.iv { background: var(--accent-soft); color: var(--fg); }
+.crm-badge.iv .ui-icon { color: var(--accent); }
+@media (max-width: 720px) {
+  .iv-table th:nth-child(4), .iv-table td:nth-child(4) { display: none; }
+}

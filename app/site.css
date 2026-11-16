@@ -2270,3 +2270,73 @@ p { line-height: 1.6; text-wrap: pretty; }
 .faq-item[open] summary::after { transform: rotate(-135deg) translateY(-3px); }
 .faq-item summary:hover { color: var(--sul-primary); }
 .faq-item p { margin: 0 0 1.4rem; padding: 0 0.25rem; max-width: 64ch; color: var(--sul-muted); font-size: 1.02rem; line-height: 1.6; }
+
+/* ---------- Interview booking (/book/<token>) ---------- */
+.book-section { padding-top: 8.5rem; min-height: 70vh; }
+.book-wrap { max-width: 720px; }
+.book-card {
+  padding: 2.2rem 2.2rem 2.4rem;
+  background: var(--sul-card);
+  border: 1px solid var(--sul-border);
+  border-radius: 22px;
+}
+.book-loading { display: flex; align-items: center; gap: 0.8rem; color: var(--sul-muted); }
+.book-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--sul-border-strong); border-top-color: var(--sul-primary);
+  animation: book-spin 0.8s linear infinite;
+}
+@keyframes book-spin { to { transform: rotate(360deg); } }
+.book-eyebrow { margin: 0 0 0.6rem; font-size: 0.82rem; letter-spacing: 0.02em; color: var(--sul-muted); }
+.book-title { margin: 0 0 0.9rem; font-family: var(--font-display); font-size: clamp(1.6rem, 4vw, 2.1rem); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.book-lead { margin: 0 0 1.6rem; color: var(--sul-muted); font-size: 1.02rem; line-height: 1.55; max-width: 56ch; }
+.book-sub { margin: 0 0 1rem; font-size: 1.05rem; font-weight: 600; }
+.book-msg {
+  margin: 0 0 1.4rem; padding: 0.75rem 1rem; border-radius: 12px;
+  background: var(--sul-primary-soft); border: 1px solid rgba(197, 228, 236, 0.25); color: var(--sul-ink); font-size: 0.95rem;
+}
+.book-msg.is-error { background: rgba(255, 138, 138, 0.1); border-color: rgba(255, 138, 138, 0.35); }
+.book-note { margin: 1rem 0 0; color: var(--sul-muted); font-size: 0.92rem; line-height: 1.5; }
+
+.book-current { padding: 1.4rem 1.5rem; margin-bottom: 1.6rem; border: 1px solid var(--sul-border-strong); border-radius: 16px; background: rgba(255, 255, 255, 0.02); }
+.book-when { display: flex; flex-direction: column; gap: 0.2rem; }
+.book-when strong { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+.book-when span { color: var(--sul-ink); }
+.book-where { margin-top: 0.5rem; color: var(--sul-muted); }
+.book-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-top: 1.3rem; }
+.book-actions .btn { padding: 0.65rem 1.3rem; }
+.book-link-btn {
+  padding: 0.4rem 0.2rem; background: none; border: 0; color: var(--sul-muted);
+  font: inherit; font-size: 0.92rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.book-link-btn:hover { color: #ff9c9c; }
+.book-link-btn:disabled, .book-actions .btn:disabled { opacity: 0.55; cursor: default; }
+
+.book-picker { padding-top: 0.2rem; }
+.book-day + .book-day { margin-top: 1.5rem; }
+.book-day h3 { margin: 0 0 0.7rem; font-size: 0.95rem; font-weight: 600; color: var(--sul-ink); }
+.book-times { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 0.55rem; }
+.book-time {
+  padding: 0.7rem 0.5rem; border-radius: 12px; cursor: pointer;
+  background: transparent; border: 1px solid var(--sul-border-strong); color: var(--sul-ink);
+  font: inherit; font-size: 0.95rem; font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+.book-time:hover { border-color: var(--sul-primary); }
+.book-time:focus-visible { outline: 2px solid var(--sul-primary); outline-offset: 2px; }
+.book-time.is-on { background: var(--sul-primary); border-color: var(--sul-primary); color: var(--sul-on-primary); font-weight: 600; }
+.book-confirm {
+  position: sticky; bottom: 1rem; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  margin-top: 1.6rem; padding: 1rem 1.1rem 1rem 1.3rem; border-radius: 16px;
+  background: var(--sul-bg-alt); border: 1px solid var(--sul-primary); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.book-confirm > div { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.book-confirm span { color: var(--sul-muted); font-size: 0.9rem; }
+.book-confirm .btn { padding: 0.7rem 1.4rem; }
+@media (max-width: 560px) {
+  .book-section { padding-top: 6.5rem; }
+  .book-card { padding: 1.5rem 1.15rem 1.7rem; border-radius: 18px; }
+  .book-current { padding: 1.1rem; }
+  .book-confirm .btn { width: 100%; }
+}

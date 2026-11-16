@@ -1,4 +1,5 @@
 // Shared types, constants and helpers for the committee portal (recruitment board).
+import { bookingUrl } from "./booking";
 
 export type StageId = "applied" | "review" | "invited" | "booked" | "interviewed" | "waitlist" | "offer" | "rejected";
 export type RatingId = "" | "yes" | "maybe" | "no";
@@ -35,7 +36,10 @@ export type Applicant = {
   role: string; roleSecondary: string;
   statement: string; experience: string; linkedin: string; questions: string; extraNote: string;
   files: AppFile[];
-  booking: string; // the zcal link pasted in for this applicant
+  booking: string; // legacy: a zcal link pasted in before built-in booking existed
+  bookingToken: string; // private token behind their /book/<token> link
+  interviewSlotId: string; // the interview slot they've booked, or ""
+  interviewAt: string; // when that interview starts (ISO), or ""
   status: StageId; rating: RatingId;
   secondChoiceFlag: boolean; // flagged as worth considering for their second-choice team
   notes: Note[];
@@ -58,6 +62,9 @@ export function applicantFromRow(r: any): Applicant {
     questions: r.questions || "", extraNote: r.extra_note || "",
     files: Array.isArray(r.files) ? r.files : [],
     booking: r.booking || "",
+    bookingToken: r.booking_token || "",
+    interviewSlotId: r.interview_slot_id || "",
+    interviewAt: r.interview_at || "",
     status: STAGE_BY_ID[r.status as StageId] ? r.status : "applied",
     rating: r.rating || "",
     secondChoiceFlag: r.second_choice_flag === true,
@@ -75,6 +82,13 @@ export function applicantFromRow(r: any): Applicant {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export const hasResume = (a: Applicant) => a.files.length > 0;
+
+/** The link that goes in an interview invite: their personal booking page. Falls back to an old
+ *  pasted zcal link if the booking database update hasn't been run yet. */
+export function inviteLink(a: Pick<Applicant, "bookingToken" | "booking">) {
+  if (a.bookingToken && typeof window !== "undefined") return bookingUrl(window.location.origin, a.bookingToken);
+  return a.booking.trim();
+}
 
 /** Interview notes and the interview rating open up once an applicant reaches the interview stage. */
 export const INTERVIEW_STAGES: StageId[] = ["booked", "interviewed", "waitlist", "offer"];

@@ -19,7 +19,14 @@ export function missingMailEnv() {
   return [!process.env.GMAIL_USER && "GMAIL_USER", !process.env.GMAIL_APP_PASSWORD && "GMAIL_APP_PASSWORD"].filter(Boolean) as string[];
 }
 
-export async function sendClubMail(m: { to: string; subject: string; text: string; fromName?: string; replyTo?: string }) {
+/** The address mail is sent from (also the organiser on calendar invites). */
+export const clubAddress = () => process.env.GMAIL_USER || "";
+
+export async function sendClubMail(m: {
+  to: string; subject: string; text: string; fromName?: string; replyTo?: string;
+  /** A calendar invite (.ics). Mail apps show it as an event with Add / Yes / No buttons. */
+  ics?: { method: "REQUEST" | "CANCEL" | "PUBLISH"; content: string };
+}) {
   const user = process.env.GMAIL_USER!;
   const pass = process.env.GMAIL_APP_PASSWORD!;
   const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
@@ -30,6 +37,7 @@ export async function sendClubMail(m: { to: string; subject: string; text: strin
     to: m.to,
     subject: m.subject,
     text: m.text,
+    ...(m.ics ? { icalEvent: { method: m.ics.method, filename: "interview.ics", content: m.ics.content } } : {}),
     // Nodemailer defaults this to the container's hostname, which doesn't match the sending
     // domain and reads as a spam signal.
     messageId: `<${Date.now()}.${Math.random().toString(36).slice(2)}@${domain}>`,

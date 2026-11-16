@@ -19,12 +19,14 @@ type Tab = (typeof TABS)[number]["id"];
 const EMAIL_LABEL: Record<EmailKey, string> = {
   received: "Application received",
   invite: SEND_META.invite.label,
+  booked: "Interview booked",
   offer: SEND_META.offer.label,
   reject: SEND_META.reject.label,
   rejectScreen: SEND_META.rejectScreen.label,
 };
 const SAMPLE = { name: "Alex Chen", role: "Marketing" };
-const SAMPLE_LINK = "https://zcal.co/i/example";
+const SAMPLE_LINK = "https://startuplinkunimelb.net/book/3f9c2a…";
+const SAMPLE_INTERVIEW = { when: "Tuesday 24 November, 2:30 pm – 3:00 pm (Melbourne time)", location: "Arts West 353" };
 
 function Toggle({ checked, onChange, title, help }: {
   checked: boolean; onChange: (v: boolean) => void; title: string; help?: string;
@@ -119,6 +121,9 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
               <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{EMAIL_LABEL[k]}</button>
             ))}
           </div>
+          {kind === "booked" ? (
+            <p className="crm-help" style={{ marginTop: 0 }}>Sent automatically when a candidate books or moves their interview, with a calendar invite attached.</p>
+          ) : null}
           {kind === "received" ? (
             <Toggle
               checked={s.confirmationEnabled}
@@ -134,8 +139,8 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
             <label htmlFor="set-body">Message</label>
             {preview ? (
               <div className="crm-preview">
-                <div className="crm-preview-subject">{fillTemplate(tpl.subject, SAMPLE)}</div>
-                <div className="crm-preview-body">{fillTemplate(tpl.body, SAMPLE, SAMPLE_LINK)}</div>
+                <div className="crm-preview-subject">{fillTemplate(tpl.subject, SAMPLE, SAMPLE_LINK, SAMPLE_INTERVIEW)}</div>
+                <div className="crm-preview-body">{fillTemplate(tpl.body, SAMPLE, SAMPLE_LINK, SAMPLE_INTERVIEW)}</div>
               </div>
             ) : (
               <textarea id="set-body" style={{ minHeight: 280 }} maxLength={8000} value={tpl.body} onChange={(e) => setTpl("body", e.target.value)} />
@@ -201,6 +206,19 @@ export function SettingsModal({ initial, meta, applicantCount, onClose, onSaved,
             title="Interview rating moves the applicant"
             help="Yes → Offer · Maybe → Waitlist · No → Rejected"
           />
+          <div className="crm-field" style={{ marginTop: 14 }}>
+            <label htmlFor="set-cutoff">Interview booking closes</label>
+            <div className="crm-inline" style={{ alignItems: "center" }}>
+              <div className="crm-field" style={{ margin: 0, flex: "0 0 90px" }}>
+                <input
+                  id="set-cutoff" type="number" min={0} max={168} step={1}
+                  value={s.bookingCutoffHours}
+                  onChange={(e) => setS((p) => ({ ...p, bookingCutoffHours: Math.max(0, Math.min(168, Math.round(Number(e.target.value) || 0))) }))}
+                />
+              </div>
+              <span className="crm-help" style={{ margin: 0 }}>hours before each interview. After that, candidates can&apos;t book, move or cancel online.</span>
+            </div>
+          </div>
         </>
       ) : null}
 

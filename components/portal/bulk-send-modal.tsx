@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { SEND_META, ago, rejectionKind, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
+import { SEND_META, ago, inviteLink, rejectionKind, sentEmails, sentGroup, type Applicant, type SendKind } from "@/lib/portal";
 import { fillTemplate, type PortalSettings } from "@/lib/settings";
 import { draftFor, sendEmail } from "./send-modal";
 import { Modal, confirmDialog } from "./ui";
@@ -40,7 +40,7 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
     const sentAt = sentEmails(a)[sentGroup(kind)];
     let skip = "";
     if (!a.email) skip = "No email address";
-    else if (kind === "invite" && !a.booking.trim()) skip = "No zcal link yet";
+    else if (kind === "invite" && !inviteLink(a)) skip = "No booking link (run the booking database update)";
     else if (sentAt && !resend) skip = "Already sent " + ago(sentAt);
     return { a, kind, skip, sentAt };
   }), [applicants, choice, resend]);
@@ -126,8 +126,8 @@ export function BulkSendModal({ applicants, initialKind, settings, onClose, onSe
             <div className="crm-field">
               <label>Preview{kindsUsed.length > 1 ? " (" + SEND_META[kindsUsed[0]].label + ")" : ""} for {sample.name || "first applicant"}</label>
               <div className="crm-preview" style={{ maxHeight: 200 }}>
-                <div className="crm-preview-subject">{fillTemplate(settings.templates[kindsUsed[0]].subject, sample, sample.booking)}</div>
-                <div className="crm-preview-body">{fillTemplate(settings.templates[kindsUsed[0]].body, sample, sample.booking)}</div>
+                <div className="crm-preview-subject">{fillTemplate(settings.templates[kindsUsed[0]].subject, sample, inviteLink(sample))}</div>
+                <div className="crm-preview-body">{fillTemplate(settings.templates[kindsUsed[0]].body, sample, inviteLink(sample))}</div>
               </div>
             </div>
           ) : null}

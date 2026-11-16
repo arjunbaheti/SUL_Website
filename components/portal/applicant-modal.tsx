@@ -8,13 +8,15 @@ import {
 } from "@/lib/portal";
 import { AvatarStack } from "./board-extras";
 import { FileViewer } from "./file-viewer";
+import { InterviewSection, type Member } from "./interviews";
+import type { Slot } from "@/lib/booking";
 import { Icon } from "./icons";
 import { Modal, Select, confirmDialog, copyText, shortcutBlocked, toast } from "./ui";
 
 // Fields the committee can edit -> database column. Only changed fields are sent, so two
 // reviewers editing different fields don't clobber each other.
 const EDITABLE = {
-  booking: "booking", status: "status", rating: "rating", secondChoiceFlag: "second_choice_flag",
+  status: "status", rating: "rating", secondChoiceFlag: "second_choice_flag",
 } as const;
 type Editable = keyof typeof EDITABLE;
 
@@ -209,12 +211,15 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
 
 export type PanelNav = { index: number; total: number; prev?: string; next?: string };
 
-export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], link, onClose, onSaved, onSendInvite, onOpenOther }: {
+export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], link, slots = [], applicants = [], members = [], onClose, onSaved, onSendInvite, onOpenOther, onInterviewChanged }: {
   a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean; nav?: PanelNav;
   origin?: DOMRect | null; viewers?: string[];
   /** Shareable URL that opens this applicant. */
   link?: string;
+  /** Interview slots, everyone's bookings (to know which slots are free) and interviewer names. */
+  slots?: Slot[]; applicants?: Applicant[]; members?: Member[];
   onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void; onOpenOther: (id: string) => void;
+  onInterviewChanged?: () => Promise<void>;
 }) {
   const [d, setD] = useState<Applicant>(a);
   const [extra, setExtra] = useState<Note[]>([]); // notes added in this session (until the board reloads)
@@ -227,6 +232,15 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
   const dirtySaved = useRef(false);
   const latest = useRef(d);
   useEffect(() => { latest.current = d; }, [d]);
+
+  // Booking an interview moves the stage on the server (e.g. Invited -> Interview booked). Follow
+  // it here unless the reviewer has an unsaved stage change of their own.
+  useEffect(() => {
+    if (a.status === base.current.status || latest.current.status !== base.current.status) return;
+    base.current = { ...base.current, status: a.status };
+    const t = setTimeout(() => setD((p) => ({ ...p, status: a.status })), 0);
+    return () => clearTimeout(t);
+  }, [a.status]);
 
   const saveNow = useCallback((): Promise<void> => {
     chain.current = chain.current.then(async () => {
@@ -241,7 +255,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
         toast("Couldn't save: " + (error ? error.message : "you may not have permission, or the applicant was deleted."));
         return;
       }
-      base.current = { ...base.current, booking: draft.booking, status: draft.status, rating: draft.rating, secondChoiceFlag: draft.secondChoiceFlag };
+      base.current = { ...base.current, status: draft.status, rating: draft.rating, secondChoiceFlag: draft.secondChoiceFlag };
       dirtySaved.current = true;
       if (patch.status) {
         const r = await db.from("application_notes")
@@ -327,9 +341,8 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
     });
   }
 
-  // Saves the pasted link, then opens the invite email with that link already in it.
+  // Saves anything pending, then opens the invite email with their booking link already in it.
   async function sendInvite() {
-    if (!d.booking.trim()) { toast("Paste the zcal link first."); return; }
     if (!a.email) { toast("This applicant doesn't have an email address on file."); return; }
     await saveNow();
     if (Object.keys(changes(base.current, latest.current)).length) return; // the save failed; the error is already showing
@@ -432,15 +445,11 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
         <div className="crm-field"><label>Phone</label><input readOnly value={a.phone} /></div>
         <div className="crm-field"><label>Team applied for</label><input readOnly value={a.role} /></div>
       </div>
-      <div className="crm-field">
-        <label>Zcal link</label>
-        <div className="crm-inline">
-          <div className="crm-field" style={{ margin: 0 }}>
-            <input type="url" placeholder="Paste their zcal link, e.g. https://zcal.co/…" value={d.booking} onChange={(e) => up("booking", e.target.value)} />
-          </div>
-          <button className="ui-btn" type="button" onClick={sendInvite}><Icon name="mail" />Send invite</button>
-        </div>
-      </div>
+      <InterviewSection
+        a={a} slots={slots} applicants={applicants} members={members}
+        onSendInvite={sendInvite}
+        onChanged={async () => { dirtySaved.current = true; await (onInterviewChanged ?? onSaved)(); }}
+      />
       <div className="crm-field">
         <label>Stage</label>
         <Select

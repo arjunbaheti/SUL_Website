@@ -6,7 +6,7 @@ A built-in interview scheduler for the recruitment portal. Candidates pick their
 
 | | |
 |---|---|
-| **Status** | Draft — not started (branch `booking-system`) |
+| **Status** | Built on branch `booking-system`: Phases 1–2 (all P0s). Needs `supabase/migrations/2026-11-16-interview-booking.sql` run once. P1s not started. |
 | **Builds on** | [Recruitment Dashboard spec](./recruitment-dashboard-prd.md), §5.4 Booking links and §5.5 Send invite |
 | **Storage** | Same Supabase project, free tier (new `interview_slots` table + 2 columns on `applications`) |
 | **Email** | Existing club Gmail sender (`lib/mailer.ts`), calendar invites as `.ics` attachments |
