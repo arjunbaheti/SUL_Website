@@ -9,7 +9,7 @@ import {
 import { AvatarStack } from "./board-extras";
 import { FileViewer } from "./file-viewer";
 import { InterviewSection, releaseInterviews, setInterview, type Member } from "./interviews";
-import type { Slot } from "@/lib/booking";
+import type { Session, Slot } from "@/lib/booking";
 import { Icon } from "./icons";
 import { Modal, Select, confirmDialog, copyText, shortcutBlocked, toast } from "./ui";
 
@@ -211,13 +211,13 @@ function NoteComposer({ placeholder, onAdd }: { placeholder: string; onAdd: (tex
 
 export type PanelNav = { index: number; total: number; prev?: string; next?: string };
 
-export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], link, slots = [], applicants = [], members = [], onClose, onSaved, onSendInvite, onOpenOther, onInterviewChanged }: {
+export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true, nav, origin, viewers = [], link, slots = [], sessions = [], applicants = [], members = [], onClose, onSaved, onSendInvite, onOpenOther, onInterviewChanged }: {
   a: Applicant; me: string; duplicates?: Applicant[]; ratingMovesStage?: boolean; nav?: PanelNav;
   origin?: DOMRect | null; viewers?: string[];
   /** Shareable URL that opens this applicant. */
   link?: string;
   /** Interview slots, everyone's bookings (to know which slots are free) and interviewer names. */
-  slots?: Slot[]; applicants?: Applicant[]; members?: Member[];
+  slots?: Slot[]; sessions?: Session[]; applicants?: Applicant[]; members?: Member[];
   onClose: () => void; onSaved: () => Promise<void>; onSendInvite: (id: string) => void; onOpenOther: (id: string) => void;
   onInterviewChanged?: () => Promise<void>;
 }) {
@@ -450,7 +450,7 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
         <div className="crm-field"><label>Team applied for</label><input readOnly value={a.role} /></div>
       </div>
       <InterviewSection
-        a={a} slots={slots} applicants={applicants} members={members}
+        a={a} slots={slots} sessions={sessions} applicants={applicants} members={members}
         onSendInvite={sendInvite}
         onChanged={async () => { dirtySaved.current = true; await (onInterviewChanged ?? onSaved)(); }}
       />

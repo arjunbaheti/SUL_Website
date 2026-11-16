@@ -8,7 +8,18 @@ export type Slot = {
   startsAt: string; endsAt: string;
   location: string;
   interviewers: string[];
-  team: string;
+  team: string; // only for slots without a session: '' = any team
+  sessionId: string; // the named session it belongs to, or ""
+};
+
+/** A named group of slots ("Project interviews") and who it's for. */
+export type Session = {
+  id: string;
+  name: string;
+  teams: string[]; // [] = every team
+  interviewers: string[];
+  location: string;
+  note: string; // shown to candidates on the booking page
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -16,7 +27,21 @@ export function slotFromRow(r: any): Slot {
   return {
     id: r.id, startsAt: r.starts_at, endsAt: r.ends_at, location: r.location || "",
     interviewers: Array.isArray(r.interviewers) ? r.interviewers : [], team: r.team || "",
+    sessionId: r.session_id || "",
   };
+}
+
+export function sessionFromRow(r: any): Session {
+  return {
+    id: r.id, name: r.name || "", teams: Array.isArray(r.teams) ? r.teams : [],
+    interviewers: Array.isArray(r.interviewers) ? r.interviewers : [], location: r.location || "", note: r.note || "",
+  };
+}
+
+/** Can this applicant book this session's slots? First-choice team, or a second-choice team
+ *  they've been flagged for. Mirrors _slot_open_to() in the database. */
+export function sessionFits(s: Pick<Session, "teams">, a: { role: string; roleSecondary: string; secondChoiceFlag: boolean }) {
+  return !s.teams.length || s.teams.includes(a.role) || (a.secondChoiceFlag && !!a.roleSecondary && s.teams.includes(a.roleSecondary));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

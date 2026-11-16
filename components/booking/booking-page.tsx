@@ -8,7 +8,7 @@ import { buildIcs, dayKey, fmtDayLong, fmtSlotLong, fmtTime } from "@/lib/bookin
 // Everything is read through booking_info(token) and changed through /api/booking, which
 // emails the confirmation and calendar invites.
 
-type OpenSlot = { id: string; starts_at: string; ends_at: string; location: string };
+type OpenSlot = { id: string; starts_at: string; ends_at: string; location: string; session?: string; note?: string };
 type Info = {
   first_name: string; role: string; open: boolean; cutoff_hours: number;
   current: (OpenSlot & { can_change: boolean }) | null;
@@ -52,13 +52,18 @@ export function BookingPage({ token }: { token: string }) {
 
   useEffect(() => { const t = setTimeout(load, 0); return () => clearTimeout(t); }, [load]);
 
-  const byDay = new Map<string, OpenSlot[]>();
+  // Grouped by session ("Project interviews"), then by day.
+  const bySession = new Map<string, { name: string; note: string; days: Map<string, OpenSlot[]> }>();
   for (const s of info?.slots ?? []) {
     if (s.id === info?.current?.id) continue;
+    const name = s.session || "";
+    const g = bySession.get(name) ?? { name, note: s.note || "", days: new Map<string, OpenSlot[]>() };
     const k = dayKey(s.starts_at);
-    byDay.set(k, [...(byDay.get(k) ?? []), s]);
+    g.days.set(k, [...(g.days.get(k) ?? []), s]);
+    bySession.set(name, g);
   }
-  const days = [...byDay.values()];
+  const groups = [...bySession.values()].map((g) => ({ ...g, days: [...g.days.values()].sort((x, y) => x[0].starts_at.localeCompare(y[0].starts_at)) }));
+  const anyOpen = groups.length > 0;
   const chosenSlot = info?.slots.find((s) => s.id === chosen) ?? null;
 
   async function call(payload: Record<string, unknown>) {
@@ -139,7 +144,7 @@ export function BookingPage({ token }: { token: string }) {
   const showPicker = info.open && (!cur || picking);
   return (
     <div className="book-card">
-      <p className="book-eyebrow">StartUp Link UniMelb · {info.role || "Committee"} interview</p>
+      <p className="book-eyebrow">StartUp Link UniMelb · {(groups.length === 1 && groups[0].name) || info.current?.session || (info.role || "Committee") + " interview"}</p>
       <h1 className="book-title">
         {cur ? (justBooked ? `You're booked, ${info.first_name}!` : `Your interview, ${info.first_name}`) : `Hi ${info.first_name}, pick your interview time`}
       </h1>
@@ -179,31 +184,38 @@ export function BookingPage({ token }: { token: string }) {
       {showPicker ? (
         <div className="book-picker">
           {cur ? <h2 className="book-sub">Pick a new time</h2> : null}
-          {days.length === 0 ? (
+          {!anyOpen ? (
             <p className="book-note">
               There are no open times right now{hours ? ` (bookings close ${hours} hours before each interview)` : ""}. Reply to your invite email and we&apos;ll find a time that works.
             </p>
           ) : (
-            days.map((slots) => (
-              <div className="book-day" key={slots[0].starts_at}>
-                <h3>{fmtDayLong(slots[0].starts_at)}</h3>
-                <div className="book-times" role="radiogroup" aria-label={fmtDayLong(slots[0].starts_at)}>
-                  {slots.map((s) => (
-                    <button
-                      key={s.id} type="button" role="radio" aria-checked={chosen === s.id}
-                      className={"book-time" + (chosen === s.id ? " is-on" : "")}
-                      onClick={() => setChosen(chosen === s.id ? null : s.id)}
-                    >
-                      {fmtTime(s.starts_at)}
-                    </button>
-                  ))}
-                </div>
+            groups.map((g) => (
+              <div className="book-session" key={g.name || "_"}>
+                {g.name && groups.length > 1 ? <h2 className="book-sub">{g.name}</h2> : null}
+                {g.note ? <p className="book-session-note">{g.note}</p> : null}
+                {g.days.map((slots) => (
+                  <div className="book-day" key={slots[0].starts_at}>
+                    <h3>{fmtDayLong(slots[0].starts_at)}</h3>
+                    <div className="book-times" role="radiogroup" aria-label={(g.name ? g.name + ", " : "") + fmtDayLong(slots[0].starts_at)}>
+                      {slots.map((s) => (
+                        <button
+                          key={s.id} type="button" role="radio" aria-checked={chosen === s.id}
+                          className={"book-time" + (chosen === s.id ? " is-on" : "")}
+                          onClick={() => setChosen(chosen === s.id ? null : s.id)}
+                        >
+                          {fmtTime(s.starts_at)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             ))
           )}
           {chosenSlot ? (
             <div className="book-confirm">
               <div>
+                {chosenSlot.session ? <span className="book-confirm-sess">{chosenSlot.session}</span> : null}
                 <strong>{fmtSlotLong(span(chosenSlot))}</strong>
                 {chosenSlot.location ? <span>{chosenSlot.location}</span> : null}
               </div>

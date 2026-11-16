@@ -1,7 +1,7 @@
 -- 2026-11-16: built-in interview booking (replaces zcal). See docs/interview-booking-prd.md.
 -- Run once in Supabase -> SQL Editor. Safe to re-run.
--- If you ever re-run this file, re-run 2026-11-16b-booking-edge-cases.sql after it (it updates
--- booking_info / book_interview / cancel_interview).
+-- If you ever re-run this file, re-run 2026-11-16b-booking-edge-cases.sql and then
+-- 2026-11-16c-interview-sessions.sql after it (they update booking_info / book_interview / cancel_interview).
 --
 -- What this adds
 --   interview_slots              times the committee is free to interview (committee-only table)

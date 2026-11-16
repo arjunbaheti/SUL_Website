@@ -1,5 +1,6 @@
 -- 2026-11-16 (b): interview booking edge cases. Run once after 2026-11-16-interview-booking.sql.
 -- Safe to re-run.
+-- If you ever re-run this file, re-run 2026-11-16c-interview-sessions.sql after it.
 --
 --   * Applicants still in "Applied" (invited straight from there) can use their booking link.
 --   * Someone with two applications under the same email can't hold two upcoming interviews.

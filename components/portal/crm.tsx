@@ -11,7 +11,7 @@ import { ApplicantModal, type PanelNav } from "./applicant-modal";
 import { Insights } from "./insights";
 import { Health } from "./health";
 import { Interviews, MIGRATION, releaseInterviews, type Member } from "./interviews";
-import { fmtSlotShort, slotFromRow, type Slot } from "@/lib/booking";
+import { fmtSlotShort, sessionFromRow, slotFromRow, type Session, type Slot } from "@/lib/booking";
 import { Glyph3D } from "./glyph-3d";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
 import { SendModal } from "./send-modal";
@@ -48,6 +48,7 @@ const NO_ID = "00000000-0000-0000-0000-000000000000"; // "match every row" filte
 /** The one-click email button shown on a card in this stage, if any. */
 function quickSend(a: Applicant): SendKind | null {
   if (a.status === "review") return "invite";
+  if (a.status === "invited" && !a.interviewSlotId) return "invite"; // hidden once it's been sent
   if (a.status === "offer") return "offer";
   if (a.status === "rejected") return rejectionKind(a);
   return null;
@@ -262,6 +263,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<BulkKind | null>(null);
+  const [bulkList, setBulkList] = useState<Applicant[] | null>(null); // bulk send from the Interviews tab
   const [theme, setTheme] = useTheme();
   const searchRef = useRef<HTMLInputElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -322,6 +324,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
 
   // Interview slots (Interviews tab, profile) and the committee list (interviewer picker).
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [slotsMissing, setSlotsMissing] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const loadSlots = useCallback(async () => {
@@ -329,6 +332,9 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     if (error) { setSlotsMissing(/interview_slots|does not exist|schema cache/i.test(error.message)); return; }
     setSlotsMissing(false);
     setSlots((data ?? []).map(slotFromRow));
+    // Sessions are optional (they need the 2026-11-16c update); slots work without them.
+    const ss = await portalClient().from("interview_sessions").select("*").order("created_at");
+    setSessions(ss.error ? [] : (ss.data ?? []).map(sessionFromRow));
   }, []);
   useEffect(() => {
     const t = setTimeout(loadSlots, 0);
@@ -427,6 +433,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
         queue(((p.new as Row)?.application_id) || ((p.old as Row)?.application_id));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "interview_slots" }, () => { loadSlots(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "interview_sessions" }, () => { loadSlots(); })
       // A teammate saving settings updates everyone's board.
       .on("postgres_changes", { event: "*", schema: "public", table: "portal_settings" }, () => { refreshSettings(); })
       // The first connect is covered by the load below; later ones are reconnects after a drop.
@@ -852,9 +859,12 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
         {view === "health" ? <Health /> : null}
         {view === "interviews" ? (
           <Interviews
-            applicants={applicants} slots={slots} members={members} me={me} missing={slotsMissing}
+            applicants={applicants} slots={slots} sessions={sessions} members={members} me={me} missing={slotsMissing}
             onOpen={(id) => { setOrigin(null); setOpenId(id); }}
             onReload={reloadInterviews}
+            onSend={(a) => openSend(a, "invite")}
+            onBulk={(list) => { setBulkList(list); setBulk("invite"); }}
+            onMove={(id, st) => { moveTo(id, st); }}
           />
         ) : null}
         <div className="board-view" hidden={view !== "board"}>
@@ -1035,6 +1045,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           onSaved={() => refreshIds([open.id])}
           onSendInvite={(id) => setSend({ id, kind: "invite" })}
           slots={slots}
+          sessions={sessions}
           applicants={applicants}
           members={members}
           onInterviewChanged={async () => { await Promise.all([loadSlots(), refreshIds([open.id])]); }}
@@ -1047,10 +1058,11 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
       ) : null}
       {bulk ? (
         <BulkSendModal
-          applicants={selectedApplicants}
+          applicants={bulkList ?? selectedApplicants}
           initialKind={bulk}
+          initialResend={!!bulkList && bulkList.every((a) => sentEmails(a).invite)}
           settings={settings}
-          onClose={() => setBulk(null)}
+          onClose={() => { setBulk(null); setBulkList(null); }}
           onSent={onSent}
         />
       ) : null}

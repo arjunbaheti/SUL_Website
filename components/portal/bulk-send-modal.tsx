@@ -25,12 +25,12 @@ const CHOICES: { id: BulkKind; label: string }[] = [
 type Plan = { a: Applicant; kind: SendKind; skip: string; sentAt?: string };
 type Result = "sent" | string; // "sent" or the error message
 
-export function BulkSendModal({ applicants, initialKind, settings, onClose, onSent }: {
-  applicants: Applicant[]; initialKind: BulkKind; settings: PortalSettings;
+export function BulkSendModal({ applicants, initialKind, initialResend = false, settings, onClose, onSent }: {
+  applicants: Applicant[]; initialKind: BulkKind; initialResend?: boolean; settings: PortalSettings;
   onClose: () => void; onSent: (a: Applicant, kind: SendKind) => Promise<void>;
 }) {
   const [choice, setChoice] = useState<BulkKind>(initialKind);
-  const [resend, setResend] = useState(false);
+  const [resend, setResend] = useState(initialResend);
   const [phase, setPhase] = useState<"review" | "sending" | "done">("review");
   const [results, setResults] = useState<Record<string, Result>>({});
   const stop = useRef(false);

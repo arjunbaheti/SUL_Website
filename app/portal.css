@@ -1535,3 +1535,24 @@ html[data-app="portal"] .cmd-search input:focus-visible { box-shadow: none; }
 @media (max-width: 720px) {
   .iv-table th:nth-child(4), .iv-table td:nth-child(4) { display: none; }
 }
+.iv-sec-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.iv-sec-head h3 { margin: 0; }
+.iv-row-btns { display: inline-flex; align-items: center; gap: 6px; }
+.iv-unsent { color: var(--red); font-weight: 500; }
+.iv-sent { color: var(--muted); }
+.iv-mark { margin-left: 10px; height: 26px; padding: 0 8px; font-size: 12px; }
+.iv-sessions { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-top: 10px; }
+.iv-session { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface-2); }
+.iv-session.is-on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.iv-session-top { display: flex; align-items: center; gap: 8px; }
+.iv-session-name { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--fg); font: inherit; font-size: 14.5px; font-weight: 600; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iv-session-name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.iv-session-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--fg-2); }
+.iv-session-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.iv-session-meta .ui-icon { color: var(--muted); }
+.iv-session-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.iv-session-stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.iv-session-stats .iv-warn, .iv-session-stats .iv-warn b { color: var(--red); }
+.iv-session-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.iv-teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; }
+.iv-sess { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; color: var(--muted); }

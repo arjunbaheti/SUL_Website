@@ -2340,3 +2340,6 @@ p { line-height: 1.6; text-wrap: pretty; }
   .book-current { padding: 1.1rem; }
   .book-confirm .btn { width: 100%; }
 }
+.book-session + .book-session { margin-top: 2.2rem; padding-top: 1.6rem; border-top: 1px solid var(--sul-border); }
+.book-session-note { margin: -0.4rem 0 1.1rem; color: var(--sul-muted); font-size: 0.95rem; line-height: 1.5; }
+.book-confirm .book-confirm-sess { font-size: 0.8rem; letter-spacing: 0.02em; color: var(--sul-muted); }
