@@ -10,15 +10,26 @@ export type BookingChange = {
   changed: boolean;
   app_id?: string; name?: string; email?: string; role?: string; token?: string;
   old?: unknown; new?: unknown; settings?: unknown;
+  /** From the database (2026-11-17 update): goes up on every change, so calendar updates apply in
+   *  the order the database made them. */
+  seq?: number;
+  /** Which booking this is: a new one after a cancel gets a new number, so a cancelled event's UID
+   *  is never revived (some calendars ignore that). */
+  booking_no?: number;
+  /** The change number when the old slot was booked: its interviewers' event UID. */
+  old_slot_seq?: number;
 };
 
 const DOMAIN = "startuplinkunimelb.net";
-// One calendar event per candidate: moving it updates the same event instead of adding another.
-const candidateUid = (appId: string) => `interview-${appId}@${DOMAIN}`;
-// Interviewers get one event per slot, since a different slot can mean different interviewers.
-const interviewerUid = (appId: string, slotId: string) => `interview-${appId}-${slotId}@${DOMAIN}`;
-// Calendar apps keep the highest sequence number, so later changes always win.
-const sequence = () => Math.floor(Date.now() / 1000) - 1_700_000_000;
+// The candidate's event: one per booking, so moving updates the same event and a rebooking after a
+// cancel gets a fresh one. Must match booking_info()'s cal_uid (the booking page's "Add to calendar").
+const candidateUid = (appId: string, bookingNo: number) => `interview-${appId}-${bookingNo}@${DOMAIN}`;
+// Interviewers: one event per (slot, change that put them there), since different slots can mean
+// different interviewers, and moving back to a slot later must not revive its cancelled event.
+const interviewerUid = (appId: string, slotId: string, seq: number) => `interview-${appId}-${slotId}-${seq}@${DOMAIN}`;
+// Before the 2026-11-17 database update there's no counter: fall back to the clock (tenths of a
+// second, inside a 32-bit integer).
+const clockSeq = () => Math.floor(Date.now() / 100) - 17_600_000_000;
 
 export async function sendBookingEmails(c: BookingChange, origin: string, opts: { emailCandidate: boolean }) {
   if (!c.changed || !c.app_id) return;
@@ -32,7 +43,10 @@ export async function sendBookingEmails(c: BookingChange, origin: string, opts: 
   const first = (c.name || "").trim().split(/\s+/)[0] || "there";
   const link = bookingUrl(origin, c.token || "");
   const profile = `${origin.replace(/\/+$/, "")}/portal?a=${encodeURIComponent(c.app_id)}`;
-  const seq = sequence();
+  const fromDb = typeof c.seq === "number";
+  const seq = fromDb ? c.seq! : clockSeq();
+  const bookingNo = typeof c.booking_no === "number" ? c.booking_no : 0;
+  const oldSlotSeq = typeof c.old_slot_seq === "number" ? c.old_slot_seq : 0;
   const sends: Promise<void>[] = [];
   const summary = `StartUp Link interview${c.role ? " · " + c.role : ""}`;
 
@@ -47,7 +61,7 @@ export async function sendBookingEmails(c: BookingChange, origin: string, opts: 
         ics: {
           method: "REQUEST",
           content: buildIcs({
-            uid: candidateUid(c.app_id), method: "REQUEST", sequence: seq,
+            uid: candidateUid(c.app_id, bookingNo), method: "REQUEST", sequence: seq,
             startsAt: newSlot.startsAt, endsAt: newSlot.endsAt, location: newSlot.location,
             summary, description: `Your StartUp Link UniMelb interview.\nChange or cancel: ${link}`,
             organizer, attendees: [{ name: c.name, email: c.email }],
@@ -62,7 +76,7 @@ export async function sendBookingEmails(c: BookingChange, origin: string, opts: 
         ics: {
           method: "CANCEL",
           content: buildIcs({
-            uid: candidateUid(c.app_id), method: "CANCEL", sequence: seq,
+            uid: candidateUid(c.app_id, bookingNo), method: "CANCEL", sequence: seq,
             startsAt: oldSlot.startsAt, endsAt: oldSlot.endsAt, summary, organizer,
             attendees: [{ name: c.name, email: c.email }],
           }),
@@ -82,7 +96,7 @@ export async function sendBookingEmails(c: BookingChange, origin: string, opts: 
         ics: {
           method: "CANCEL",
           content: buildIcs({
-            uid: interviewerUid(c.app_id, oldSlot.id), method: "CANCEL", sequence: seq,
+            uid: interviewerUid(c.app_id, oldSlot.id, oldSlotSeq), method: "CANCEL", sequence: seq,
             startsAt: oldSlot.startsAt, endsAt: oldSlot.endsAt, summary: `Interview: ${c.name || "applicant"}`,
             organizer, attendees: [{ email }],
           }),
@@ -101,7 +115,7 @@ export async function sendBookingEmails(c: BookingChange, origin: string, opts: 
         ics: {
           method: "REQUEST",
           content: buildIcs({
-            uid: interviewerUid(c.app_id, newSlot.id), method: "REQUEST", sequence: seq,
+            uid: interviewerUid(c.app_id, newSlot.id, seq), method: "REQUEST", sequence: seq,
             startsAt: newSlot.startsAt, endsAt: newSlot.endsAt, location: newSlot.location,
             summary: `Interview: ${c.name || "applicant"} (${c.role || "no team"})`,
             description: `Profile: ${profile}`, organizer, attendees: [{ email }],
@@ -111,6 +125,7 @@ export async function sendBookingEmails(c: BookingChange, origin: string, opts: 
     }
   }
 
+  // Sent one after another over a single Gmail connection (see sendClubMail).
   const results = await Promise.allSettled(sends);
   const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
   if (failed.length) throw new Error(`${failed.length} of ${results.length} emails failed: ${(failed[0].reason as Error)?.message || "unknown error"}`);

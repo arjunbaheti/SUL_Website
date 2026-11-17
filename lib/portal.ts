@@ -1,5 +1,5 @@
 // Shared types, constants and helpers for the committee portal (recruitment board).
-import { bookingUrl } from "./booking";
+import { SITE_ORIGIN, bookingUrl } from "./booking";
 
 export type StageId = "applied" | "review" | "invited" | "booked" | "interviewed" | "waitlist" | "offer" | "rejected";
 export type RatingId = "" | "yes" | "maybe" | "no";
@@ -83,10 +83,11 @@ export function applicantFromRow(r: any): Applicant {
 
 export const hasResume = (a: Applicant) => a.files.length > 0;
 
-/** The link that goes in an interview invite: their personal booking page. Falls back to an old
+/** The link that goes in an interview invite: their personal booking page on the live site
+ *  (never localhost or a preview URL, whichever copy of the portal sent it). Falls back to an old
  *  pasted zcal link if the booking database update hasn't been run yet. */
 export function inviteLink(a: Pick<Applicant, "bookingToken" | "booking">) {
-  if (a.bookingToken && typeof window !== "undefined") return bookingUrl(window.location.origin, a.bookingToken);
+  if (a.bookingToken) return bookingUrl(SITE_ORIGIN, a.bookingToken);
   return a.booking.trim();
 }
 

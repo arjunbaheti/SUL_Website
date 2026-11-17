@@ -19,6 +19,19 @@ export function missingMailEnv() {
   return [!process.env.GMAIL_USER && "GMAIL_USER", !process.env.GMAIL_APP_PASSWORD && "GMAIL_APP_PASSWORD"].filter(Boolean) as string[];
 }
 
+// One pooled Gmail connection per server instance (at most 2 sockets): a booking can send a dozen
+// emails at once, and opening a connection for each trips Gmail's limit on simultaneous logins.
+let pooled: ReturnType<typeof nodemailer.createTransport> | null = null;
+function transport() {
+  if (!pooled) {
+    pooled = nodemailer.createTransport({
+      service: "gmail", pool: true, maxConnections: 2,
+      auth: { user: process.env.GMAIL_USER!, pass: process.env.GMAIL_APP_PASSWORD! },
+    });
+  }
+  return pooled;
+}
+
 /** The address mail is sent from (also the organiser on calendar invites). */
 export const clubAddress = () => process.env.GMAIL_USER || "";
 
@@ -28,8 +41,7 @@ export async function sendClubMail(m: {
   ics?: { method: "REQUEST" | "CANCEL" | "PUBLISH"; content: string };
 }) {
   const user = process.env.GMAIL_USER!;
-  const pass = process.env.GMAIL_APP_PASSWORD!;
-  const transporter = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+  const transporter = transport();
   const domain = user.split("@")[1] || "startuplinkunimelb.net";
   await transporter.sendMail({
     from: { name: cleanFromName(m.fromName), address: user },

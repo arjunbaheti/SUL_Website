@@ -11,6 +11,10 @@
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase-config";
 import { missingMailEnv } from "@/lib/mailer";
 import { sendBookingEmails, type BookingChange } from "@/lib/booking-mail";
+import { SITE_ORIGIN } from "@/lib/booking";
+
+// A booking can send a dozen emails; give it time rather than being cut off half way.
+export const maxDuration = 60;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[0-9a-f]{32,128}$/i;
@@ -22,6 +26,7 @@ const MESSAGES: Record<string, [number, string]> = {
   slot_taken: [409, "Someone just booked that time. Please pick another."],
   too_late: [409, "That time is too soon to book. Please pick a later one."],
   locked: [409, "Your interview is too soon to change online. Please reply to your invite email and we'll sort it out."],
+  busy: [429, "Lots of people are booking right now. Please try again in a few minutes."],
   already_booked: [409, "You already have an interview booked from another application. Use the link in that email to change it, or reply to us."],
   too_many: [429, "You've changed your booking several times today. Please reply to your invite email and we'll sort it out."],
   not_committee: [403, "This account isn't on the committee reviewer list."],
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
   const auth = request.headers.get("authorization") || "";
   const session = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   const slotId = typeof body.slotId === "string" && UUID.test(body.slotId) ? body.slotId : null;
-  const origin = new URL(request.url).origin;
+  const origin = SITE_ORIGIN; // links in emails always point at the live site
 
   let res: Awaited<ReturnType<typeof rpc>>;
   let emailCandidate = true;

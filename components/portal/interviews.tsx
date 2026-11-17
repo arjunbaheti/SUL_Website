@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { portalClient } from "@/lib/supabase";
 import { TEAMS } from "@/lib/content";
 import {
@@ -115,6 +115,8 @@ export function InterviewSection({ a, slots, sessions = [], applicants, members,
     hint: s.location || undefined,
   }));
   const bookedSession = slot ? sessionOf(slot)?.name : "";
+  // Matches the database: only applicants still in the running can be booked.
+  const canBook = ["applied", "review", "invited", "booked"].includes(a.status);
 
   async function pick(slotId: string) {
     const s = slots.find((x) => x.id === slotId);
@@ -171,7 +173,7 @@ export function InterviewSection({ a, slots, sessions = [], applicants, members,
               label="Move to another time"
               placeholder="Move…"
               value=""
-              disabled={busy || !options.length}
+              disabled={busy || !options.length || !canBook}
               align="end"
               onChange={pick}
               options={options}
@@ -189,8 +191,8 @@ export function InterviewSection({ a, slots, sessions = [], applicants, members,
             <button className="ui-btn" type="button" onClick={onSendInvite}><Icon name="mail" />Send invite</button>
           </div>
           <div className="iv-or">
-            <span>{open.filter(fits).length ? open.filter(fits).length + " open time" + (open.filter(fits).length === 1 ? "" : "s") + " for their team. They pick one from the link, or" : "No open times for their team yet. Add some in the Interviews tab, or"}</span>
-            {open.length ? (
+            <span>{!canBook ? `They're in ${STAGE_BY_ID[a.status].label}. Move them back to Under review to book an interview.` : open.filter(fits).length ? open.filter(fits).length + " open time" + (open.filter(fits).length === 1 ? "" : "s") + " for their team. They pick one from the link, or" : "No open times for their team yet. Add some in the Interviews tab, or"}</span>
+            {open.length && canBook ? (
               <Select label="Book a time for them" placeholder="Book a time for them…" value="" disabled={busy} onChange={pick} options={options} />
             ) : null}
           </div>
@@ -203,10 +205,11 @@ export function InterviewSection({ a, slots, sessions = [], applicants, members,
 // ---- Add slots ------------------------------------------------------------------------------
 
 const LENGTHS = [15, 20, 30, 45, 60];
+const MAX_SLOTS = 60; // per batch
 const GAPS = [0, 5, 10, 15];
 
-function AddSlotsModal({ members, me, existing, sessions, initialSession = "", onClose, onSaved }: {
-  members: Member[]; me: string; existing: Slot[]; sessions: Session[]; initialSession?: string;
+function AddSlotsModal({ members, me, existing, sessions, teamOptions, initialSession = "", onClose, onSaved }: {
+  members: Member[]; me: string; existing: Slot[]; sessions: Session[]; teamOptions: string[]; initialSession?: string;
   onClose: () => void; onSaved: () => Promise<void>;
 }) {
   const start = sessions.find((x) => x.id === initialSession);
@@ -233,11 +236,12 @@ function AddSlotsModal({ members, me, existing, sessions, initialSession = "", o
     const start = melbourneToUtc(date, from), end = melbourneToUtc(date, to);
     const step = (+len + +gap) * 60000, dur = +len * 60000;
     const out: { starts_at: string; ends_at: string }[] = [];
-    for (let t = +start; t + dur <= +end && out.length < 48; t += step) {
+    for (let t = +start; t + dur <= +end && out.length < MAX_SLOTS + 1; t += step) {
       out.push({ starts_at: new Date(t).toISOString(), ends_at: new Date(t + dur).toISOString() });
     }
     return out;
   }, [date, from, to, len, gap]);
+  const tooMany = planned.length > MAX_SLOTS;
   const past = planned.length > 0 && +new Date(planned[0].starts_at) < openedAt;
   // Same start time and place as a slot that already exists: skipped, so adding twice is harmless.
   const loc = location.trim().toLowerCase();
@@ -250,7 +254,7 @@ function AddSlotsModal({ members, me, existing, sessions, initialSession = "", o
     && e.interviewers.some((x) => people.includes(x)))).length;
 
   async function save() {
-    if (!fresh.length || past) return;
+    if (!fresh.length || past || tooMany) return;
     setBusy(true);
     const rows = fresh.map((p) => ({
       ...p, location: location.trim(), interviewers: people,
@@ -271,14 +275,14 @@ function AddSlotsModal({ members, me, existing, sessions, initialSession = "", o
       foot={
         <>
           <span className="crm-help" style={{ margin: 0 }}>
-            {past ? "That time has already passed." : !planned.length ? "No slots fit in that window."
+            {tooMany ? `That's over ${MAX_SLOTS} slots. Add them a day at a time.` : past ? "That time has already passed." : !planned.length ? "No slots fit in that window."
               : !fresh.length ? "These slots already exist."
               : `${fresh.length} slot${fresh.length === 1 ? "" : "s"}: ${fmtTime(fresh[0].starts_at)} – ${fmtTime(fresh[fresh.length - 1].ends_at)}`
                 + (dupes ? ` · ${dupes} already exist${dupes === 1 ? "s" : ""}, skipped` : "")}
           </span>
           <span className="spacer" />
           <button className="ui-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="ui-btn ui-btn-primary" type="button" disabled={busy || !fresh.length || past} onClick={save}>
+          <button className="ui-btn ui-btn-primary" type="button" disabled={busy || !fresh.length || past || tooMany} onClick={save}>
             {busy ? "Adding…" : `Add ${fresh.length || ""} slot${fresh.length === 1 ? "" : "s"}`}
           </button>
         </>
@@ -321,7 +325,7 @@ function AddSlotsModal({ members, me, existing, sessions, initialSession = "", o
           {sessionId ? (
             <input readOnly value={teamsLabel(sessions.find((x) => x.id === sessionId)?.teams ?? []) + " (from the session)"} />
           ) : (
-            <Select block label="Team" value={team} onChange={setTeam} options={[{ value: "", label: "Any team" }, ...TEAMS.map((t) => ({ value: t.name, label: t.name + " applicants" }))]} />
+            <Select block label="Team" value={team} onChange={setTeam} options={[{ value: "", label: "Any team" }, ...teamOptions.map((t) => ({ value: t, label: t + " applicants" }))]} />
           )}
         </div>
       </div>
@@ -339,8 +343,8 @@ function AddSlotsModal({ members, me, existing, sessions, initialSession = "", o
 
 // ---- Sessions -------------------------------------------------------------------------------
 
-function SessionModal({ session, members, me, upcomingOpen, onClose, onSaved }: {
-  session: Session | null; members: Member[]; me: string;
+function SessionModal({ session, members, me, upcomingOpen, teamOptions, onClose, onSaved }: {
+  session: Session | null; members: Member[]; me: string; teamOptions: string[];
   /** Open (unbooked) upcoming slots in this session, which pick up interviewer/location changes. */
   upcomingOpen: Slot[];
   onClose: () => void; onSaved: (id: string) => Promise<void>;
@@ -405,10 +409,10 @@ function SessionModal({ session, members, me, upcomingOpen, onClose, onSaved }: 
       <div className="crm-field">
         <label>For applicants to <span className="iv-label-note">none ticked = every team</span></label>
         <div className="iv-teams">
-          {TEAMS.map((t) => (
-            <label key={t.name} className="crm-check iv-person">
-              <input type="checkbox" checked={teams.includes(t.name)} onChange={() => toggleTeam(t.name)} />
-              <span>{t.name}</span>
+          {teamOptions.map((t) => (
+            <label key={t} className="crm-check iv-person">
+              <input type="checkbox" checked={teams.includes(t)} onChange={() => toggleTeam(t)} />
+              <span>{t}</span>
             </label>
           ))}
         </div>
@@ -496,7 +500,9 @@ export function Interviews({ applicants, slots, sessions, members, me, missing, 
   const [editing, setEditing] = useState<Session | "new" | null>(null);
   const [filter, setFilter] = useState("all"); // "all" | session id | "none"
   const [showPast, setShowPast] = useState(false);
-  const [now] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  // Left open all day: past/upcoming and "Interviewed" buttons keep up with the clock.
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t); }, []);
 
   const byslot = useMemo(() => new Map(applicants.filter((a) => a.interviewSlotId).map((a) => [a.interviewSlotId, a])), [applicants]);
   const upcoming = slots.filter((s) => +new Date(s.endsAt) > now);
@@ -543,7 +549,7 @@ export function Interviews({ applicants, slots, sessions, members, me, missing, 
 
   /** Applicants a session is for who still need to book (not yet booked, still in the running). */
   const pendingFor = (ss: Session) => applicants.filter((a) =>
-    ["applied", "review", "invited"].includes(a.status) && !a.interviewSlotId && sessionFits(ss, a));
+    ["review", "invited"].includes(a.status) && !a.interviewSlotId && sessionFits(ss, a)); // screened, not unscreened Applied
 
   async function removeSession(ss: Session) {
     const mine = slots.filter((x) => x.sessionId === ss.id);
@@ -761,12 +767,18 @@ export function Interviews({ applicants, slots, sessions, members, me, missing, 
       {adding ? (
         <AddSlotsModal
           members={members} me={me} existing={slots} sessions={sessions} initialSession={adding.session}
+          teamOptions={[...new Set([...TEAMS.map((t) => t.name), ...applicants.flatMap((a) => [a.role, a.roleSecondary]).filter(Boolean)])]}
           onClose={() => setAdding(null)} onSaved={slotsAdded}
         />
       ) : null}
       {editing ? (
         <SessionModal
           session={editing === "new" ? null : editing} members={members} me={me}
+          teamOptions={[...new Set([
+            ...TEAMS.map((t) => t.name),
+            ...applicants.flatMap((a) => [a.role, a.roleSecondary]).filter(Boolean),
+            ...(editing === "new" ? [] : editing.teams),
+          ])]}
           upcomingOpen={editing === "new" ? [] : upcoming.filter((x) => x.sessionId === editing.id && !byslot.has(x.id))}
           onClose={() => setEditing(null)}
           onSaved={async (id) => { await onReload(); if (editing === "new") setAdding({ session: id }); }}

@@ -235,12 +235,18 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
 
   // Booking an interview moves the stage on the server (e.g. Invited -> Interview booked). Follow
   // it here unless the reviewer has an unsaved stage change of their own.
+  // Same for a teammate's rating or 2nd-choice flag, so you never overwrite what you can't see.
   useEffect(() => {
-    if (a.status === base.current.status || latest.current.status !== base.current.status) return;
-    base.current = { ...base.current, status: a.status };
-    const t = setTimeout(() => setD((p) => ({ ...p, status: a.status })), 0);
+    const remote = { status: a.status, rating: a.rating, secondChoiceFlag: a.secondChoiceFlag };
+    const synced: Partial<Applicant> = {};
+    for (const k of ["status", "rating", "secondChoiceFlag"] as const) {
+      if (remote[k] !== base.current[k] && latest.current[k] === base.current[k]) (synced as Record<string, unknown>)[k] = remote[k];
+    }
+    if (!Object.keys(synced).length) return;
+    base.current = { ...base.current, ...synced };
+    const t = setTimeout(() => setD((p) => ({ ...p, ...synced })), 0);
     return () => clearTimeout(t);
-  }, [a.status]);
+  }, [a.status, a.rating, a.secondChoiceFlag]);
 
   const saveNow = useCallback((): Promise<void> => {
     chain.current = chain.current.then(async () => {
@@ -331,14 +337,15 @@ export function ApplicantModal({ a, me, duplicates = [], ratingMovesStage = true
 
   // Rating an interview moves the applicant on (unless turned off in Settings):
   // Yes -> Offer, Maybe -> Waitlist, No -> Rejected.
-  function setRating(r: RatingId) {
-    setD((p) => {
-      const next = { ...p, rating: r };
-      if (ratingMovesStage && r && ["booked", "interviewed", "waitlist", "offer", "rejected"].includes(p.status)) {
-        next.status = r === "yes" ? "offer" : r === "maybe" ? "waitlist" : "rejected";
-      }
-      return next;
-    });
+  async function setRating(r: RatingId) {
+    const p = latest.current;
+    const next = { ...p, rating: r };
+    if (ratingMovesStage && r && ["booked", "interviewed", "waitlist", "offer", "rejected"].includes(p.status)) {
+      next.status = r === "yes" ? "offer" : r === "maybe" ? "waitlist" : "rejected";
+    }
+    // Rating "No" before the interview has happened cancels it properly (interviewers are told).
+    if (next.status !== p.status && !(await releaseInterviews([a], next.status, slots))) return;
+    setD((cur) => ({ ...cur, rating: next.rating, status: next.status }));
   }
 
   // Saves anything pending, then opens the invite email with their booking link already in it.

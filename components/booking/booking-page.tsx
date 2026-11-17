@@ -11,16 +11,17 @@ import { buildIcs, dayKey, fmtDayLong, fmtSlotLong, fmtTime } from "@/lib/bookin
 type OpenSlot = { id: string; starts_at: string; ends_at: string; location: string; session?: string; note?: string };
 type Info = {
   first_name: string; role: string; open: boolean; cutoff_hours: number;
-  current: (OpenSlot & { can_change: boolean }) | null;
+  current: (OpenSlot & { can_change: boolean; cal_uid?: string }) | null;
   slots: OpenSlot[];
 };
 type Phase = "loading" | "invalid" | "error" | "ready";
 
 const span = (s: { starts_at: string; ends_at: string }) => ({ startsAt: s.starts_at, endsAt: s.ends_at });
 
-function downloadIcs(s: OpenSlot, role: string) {
+function downloadIcs(s: OpenSlot & { cal_uid?: string }, role: string) {
   const ics = buildIcs({
-    uid: `interview-${s.id}@startuplinkunimelb.net`, method: "PUBLISH", sequence: 0,
+    // Same UID as the emailed invite, so adding both doesn't create two events.
+    uid: s.cal_uid || `interview-${s.id}@startuplinkunimelb.net`, method: "PUBLISH", sequence: 0,
     startsAt: s.starts_at, endsAt: s.ends_at, location: s.location,
     summary: `StartUp Link interview${role ? " · " + role : ""}`,
     description: `Your StartUp Link UniMelb interview. Change or cancel: ${window.location.href}`,

@@ -84,6 +84,9 @@ export function melbourneToUtc(date: string, time: string): Date {
 /** Today's date in Melbourne, "2026-11-24" (for date inputs). */
 export const melbourneToday = () => dayKey(new Date().toISOString());
 
+/** The live site's address, used for every link that goes out in an email (set in next.config.ts). */
+export const SITE_ORIGIN = (process.env.NEXT_PUBLIC_SITE_ORIGIN || "https://sul-website.vercel.app").replace(/\/+$/, "");
+
 /** The candidate's personal booking page. */
 export const bookingUrl = (origin: string, token: string) => (token ? origin.replace(/\/+$/, "") + "/book/" + token : "");
 

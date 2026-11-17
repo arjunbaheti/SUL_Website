@@ -41,13 +41,19 @@ export function BulkSendModal({ applicants, initialKind, initialResend = false, 
     let skip = "";
     if (!a.email) skip = "No email address";
     else if (kind === "invite" && a.interviewSlotId) skip = "Already booked an interview";
+    else if (kind === "invite" && !["applied", "review", "invited", "booked"].includes(a.status)) skip = "Past the interview stage";
+    else if (kind === "offer" && a.status !== "offer") skip = "Not in Offer";
+    else if ((kind === "reject" || kind === "rejectScreen") && a.status !== "rejected") skip = "Not in Rejected";
     else if (kind === "invite" && !inviteLink(a)) skip = "No booking link (run the booking database update)";
     else if (sentAt && !resend) skip = "Already sent " + ago(sentAt);
     return { a, kind, skip, sentAt };
   }), [applicants, choice, resend]);
 
   const ready = plan.filter((p) => !p.skip);
-  const toSend = ready.slice(0, MAX_BATCH);
+  // Frozen when sending starts: the board refreshes after each email, which would otherwise turn
+  // people already emailed into "Already sent" and shrink the list mid-run.
+  const [batch, setBatch] = useState<Plan[] | null>(null);
+  const toSend = phase === "review" ? ready.slice(0, MAX_BATCH) : batch ?? [];
   const kindsUsed = [...new Set(ready.map((p) => p.kind))];
   const sentCount = Object.values(results).filter((r) => r === "sent").length;
   const failCount = Object.values(results).filter((r) => r !== "sent").length;
@@ -58,8 +64,10 @@ export function BulkSendModal({ applicants, initialKind, initialResend = false, 
     const noun = choice === "reject" ? "rejection" : choice === "offer" ? "offer" : "interview invite";
     if (!(await confirmDialog({ title: `Email ${toSend.length} ${noun}${toSend.length === 1 ? "" : "s"} now?`, body: "Emails go out one at a time from the club Gmail. This can't be undone.", confirmLabel: `Send ${toSend.length}` }))) return;
     stop.current = false;
+    const list = ready.slice(0, MAX_BATCH);
+    setBatch(list);
     setPhase("sending");
-    for (const [i, p] of toSend.entries()) {
+    for (const [i, p] of list.entries()) {
       if (stop.current) break;
       if (i > 0) await wait(SEND_GAP_MS);
       if (stop.current) break;

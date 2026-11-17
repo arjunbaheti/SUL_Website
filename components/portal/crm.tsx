@@ -11,7 +11,7 @@ import { ApplicantModal, type PanelNav } from "./applicant-modal";
 import { Insights } from "./insights";
 import { Health } from "./health";
 import { Interviews, MIGRATION, releaseInterviews, type Member } from "./interviews";
-import { fmtSlotShort, sessionFromRow, slotFromRow, type Session, type Slot } from "@/lib/booking";
+import { SITE_ORIGIN, fmtSlotShort, sessionFromRow, slotFromRow, type Session, type Slot } from "@/lib/booking";
 import { Glyph3D } from "./glyph-3d";
 import { BulkSendModal, type BulkKind } from "./bulk-send-modal";
 import { SendModal } from "./send-modal";
@@ -43,7 +43,9 @@ async function fetchApplications(q: (sel: string) => PromiseLike<{ data: unknown
   }
   return res;
 }
-const NO_ID = "00000000-0000-0000-0000-000000000000"; // "match every row" filter for bulk updates/deletes
+const NO_ID = "00000000-0000-0000-0000-000000000000";
+/** Stages whose booking link is open (matches booking_info() in the database). */
+const INVITABLE: StageId[] = ["applied", "review", "invited", "booked"]; // "match every row" filter for bulk updates/deletes
 
 /** The one-click email button shown on a card in this stage, if any. */
 function quickSend(a: Applicant): SendKind | null {
@@ -115,7 +117,7 @@ function urlFor(s: UrlState) {
 
 /** A clean link to one applicant (without the sender's own filters), for pasting into Slack. */
 export function applicantLink(id: string) {
-  return window.location.origin + window.location.pathname + "?a=" + encodeURIComponent(id);
+  return SITE_ORIGIN + "/portal?a=" + encodeURIComponent(id); // the live portal, for sharing with teammates
 }
 
 function initials(email: string) {
@@ -569,6 +571,12 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   async function moveTo(id: string, status: StageId, opts: { undoable?: boolean } = { undoable: true }) {
     const a = applicants.find((x) => x.id === id);
     if (!a || a.status === status) return;
+    // "Interview booked" now means a real booking: book a time from their profile instead.
+    if (status === "booked" && !a.interviewSlotId) {
+      toast(`Book ${a.name || "them"} a time from their profile (or send their invite), and they'll move to Interview booked.`);
+      setOpenId(id);
+      return;
+    }
     if (!(await releaseInterviews([a], status, slots))) return;
     const prev = a.status;
     const set = (s: StageId) => setApplicants((l) => l.map((x) => (x.id === id ? { ...x, status: s, updatedAt: new Date().toISOString() } : x)));
@@ -590,6 +598,10 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   function openSend(a: Applicant, kind: SendKind) {
     if (!a.email) { toast("This applicant doesn't have an email address on file."); return; }
     if (kind === "invite" && !inviteLink(a)) { toast("Interview booking needs the latest database update: run " + MIGRATION + "."); return; }
+    if (kind === "invite" && !INVITABLE.includes(a.status)) {
+      toast(`${a.name || "They"}'s in ${STAGE_BY_ID[a.status].label}, so their booking link would say booking is closed. Move them back to Under review first.`);
+      return;
+    }
     setSend({ id: a.id, kind });
   }
 
@@ -610,9 +622,10 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
   /** Moves several applicants at once. `from` restores each one's own previous stage (Undo). */
   async function bulkMove(status: StageId | null, from?: Map<string, StageId>) {
     const targets = from
-      ? [...from.entries()]
+      ? [...from.entries()].map(([id, st]) => [id, st === "booked" && !applicants.find((x) => x.id === id)?.interviewSlotId ? "invited" : st] as [string, StageId])
       : selectedApplicants.filter((a) => a.status !== status).map((a) => [a.id, status as StageId] as [string, StageId]);
     if (!targets.length) return;
+    if (!from && status === "booked") { toast("Applicants move to Interview booked when a time is booked. Book from each profile, or send invites."); return; }
     if (!from && status && !(await releaseInterviews(selectedApplicants.filter((a) => a.status !== status), status, slots))) return;
     const previous = new Map(targets.map(([id]) => [id, applicants.find((x) => x.id === id)?.status ?? "applied"] as [string, StageId]));
     const db = portalClient();
@@ -684,18 +697,18 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
     }
     if (mode === "files") {
       const { error } = await db.from("applications").update({ files: [] }).neq("id", NO_ID);
-      await reload();
+      await load(); // not reload(): the loading screen would close this dialog and lose the result
       return error ? `Deleted ${removed} file(s), but couldn't clear the file list: ${error.message}` : `Deleted ${removed} file(s). Applicant records are kept.`;
     }
     const { data, error } = await db.from("applications").delete().neq("id", NO_ID).select("id");
-    await reload();
+    await load();
     if (error) return `Deleted ${removed} file(s), but couldn't delete applicants: ${error.message}`;
     return `Deleted ${removed} file(s) and ${data?.length ?? 0} applicant(s), with their notes and votes.`;
   }
 
   const settingsModal = settingsOpen ? (
     <SettingsModal
-      key={settingsMeta.updatedAt || "default"}
+      key="settings" /* a teammate saving settings mustn't wipe what you're editing */
       initial={settings}
       meta={settingsMeta}
       applicantCount={applicants.length}
@@ -1043,7 +1056,7 @@ export function Crm({ onReady }: { onReady?: () => void } = {}) {
           nav={nav}
           onClose={() => { setOpenId(null); setOrigin(null); }}
           onSaved={() => refreshIds([open.id])}
-          onSendInvite={(id) => setSend({ id, kind: "invite" })}
+          onSendInvite={(id) => { const x = applicants.find((y) => y.id === id); if (x) openSend(x, "invite"); }}
           slots={slots}
           sessions={sessions}
           applicants={applicants}
